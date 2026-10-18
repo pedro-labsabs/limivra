@@ -14,7 +14,7 @@
 ## 1. Contexto, objetivos e limites
 
 ### 1.1 Contexto do projeto Limivra
-O Limivra é uma solução open source para Linux focada em produtividade em tela grande acionada por celulares Android (com foco inicial em aparelhos sem modo desktop de fábrica, como o Redmi Note 13 4G), sem exigência de root no fluxo base.
+O Limivra é uma proposta de solução aberta para Linux focada em produtividade em tela grande acionada por celulares Android (com foco inicial em aparelhos sem modo desktop de fábrica, como o Redmi Note 13 4G), sem exigência de root no fluxo base, cujo licenciamento formal de código aberto encontra-se em deliberação.
 
 A arquitetura proposta ([`docs/architecture/system.md`](../architecture/system.md) e [ADR-0001](../architecture/decisions/ADR-0001-scrcpy-external.md)) prevê a utilização de:
 - Interface de usuário em Linux (planejada em Qt 6 / QML);
@@ -61,25 +61,25 @@ Para a escolha da licença de código aberto do Limivra, foram analisadas três 
 - **Classificação:** Permissiva moderna com concessão explícita de patentes e proteção defensiva (OSI Approved, FSF Free Software).
 - **Texto e termos fundamentais:** Concede direito de reproduzir, preparar trabalhos derivados, exibir e distribuir o software e trabalhos derivados em código-fonte ou binário. Exige preservação de copyright, patente, marcas e notas de atribuição, além de indicar alterações relevantes em arquivos modificados (Seção 4).
 - **Permissões e restrições:** Permite uso comercial e integração em projetos proprietários ou livres. Proíbe uso indevido de marcas registradas do projeto (Seção 6).
-- **Obrigações de redistribuição:** Obrigatoriedade de inclusão do arquivo de licença, notices existentes em arquivo `NOTICE`, cópia das notificações de copyright e menção a arquivos modificados.
+- **Obrigações de redistribuição:** Obrigatoriedade de inclusão de uma cópia da licença Apache-2.0, preservação dos avisos de direitos autorais, patentes e marcas, menção a alterações relevantes em arquivos modificados (Seção 4(b)) e inclusão dos avisos pertinentes contidos em eventual arquivo `NOTICE` distribuído com a obra de origem (Seção 4(d)). A existência de um arquivo `NOTICE` próprio no Limivra não é uma imposição universal da licença, mas decorre da obrigação condicional de propagar atribuições recebidas ou de boa prática voluntária de inventário.
 - **Copyleft:** Inexistente. Trabalhos derivados podem ser licenciados sob outros termos (inclusive proprietários), desde que cumpridas as condições de atribuição da Seção 4.
 - **Patentes:** Contém concessão expressa de licença de patentes perpétua, mundial e livre de royalties por parte de cada contribuidor (Seção 3), com cláusula de rescisão automática se o receptor ajuizar litígio de violação de patente contra o projeto.
 - **Compatibilidade com componentes:** Alinhamento nativo direto com o **scrcpy** (que é licenciado sob Apache-2.0). A FSF reconhece compatibilidade unilateral: código Apache-2.0 pode ser incorporado a um projeto GPLv3 (a GPLv3 absorve o trabalho combinado). Contudo, código puramente GPLv2 (sem "or later") é incompatível com Apache-2.0 (situação irrelevante para o Limivra, que não mira GPLv2).
 - **Impacto na distribuição Linux:** Excelente acolhimento nas distribuições Linux e no ecossistema Rust (onde o padrão de facto da comunidade é a licença dual MIT / Apache-2.0).
 - **Impacto em contribuições:** Proporciona segurança jurídica robusta contra "patent trolls" e emboscadas de patentes de colaboradores corporativos.
-- **Riscos específicos para o Limivra:** Exige manutenção formal e disciplinada do arquivo `NOTICE`. Se o Limivra vier a linkar estaticamente componentes Qt com partes sob GPLv3, o binário final distribuído deverá atender à GPLv3.
+- **Riscos específicos para o Limivra:** Exige disciplina na gestão de atribuições e preservação de avisos de `NOTICE` de componentes incorporados. Se o Limivra vier a linkar componentes Qt que possuam partes restritas a GPLv3, o binário final distribuído deverá atender à GPLv3.
 
 ### 2.3 GNU General Public License v3.0 or later (`GPL-3.0-or-later`)
 - **Identificador SPDX:** `GPL-3.0-or-later`
 - **Classificação:** Copyleft forte (Strong Copyleft) com cláusulas anti-tivoização e patentes (OSI Approved, FSF Free Software).
 - **Texto e termos fundamentais:** Concede liberdade para executar, estudar, modificar e redistribuir o software. Garante que qualquer trabalho que contenha o programa ou seja dele derivado seja distribuído sob os mesmos termos da GPLv3 (ou versão posterior, se utilizada a cláusula "or-later").
-- **Permissões e restrições:** Permite distribuição e uso comercial, mas proíbe terminantemente fechar o código-fonte de versões modificadas ou combinadas distribuídas a terceiros.
-- **Obrigações de redistribuição:** Ao distribuir binários, é obrigatório disponibilizar o código-fonte correspondente completo (*Corresponding Source*), incluindo scripts de controle de compilação e instalação.
-- **Copyleft:** Forte e recíproco. Impede que terceiros apropriem o código do Limivra em ferramentas proprietárias sem retribuir o código-fonte.
+- **Permissões e restrições:** Permite distribuição e uso comercial, mas proíbe fechar o código-fonte de versões modificadas ou combinadas quando forem distribuídas a terceiros. Modificações mantidas em uso exclusivamente privado não acionam a obrigação de disponibilização de código.
+- **Obrigações de redistribuição:** Ao distribuir binários a terceiros, é obrigatório disponibilizar o código-fonte correspondente completo (*Corresponding Source*), incluindo scripts de controle de compilação e instalação.
+- **Copyleft:** Forte e recíproco na distribuição. Impede que terceiros apropriem o código do Limivra em ferramentas proprietárias distribuídas sem retribuir o código-fonte correspondente.
 - **Patentes e Anti-tivoização:** Cláusula explícita de licenciamento de patentes com rescisão por litígio (Seção 11) e proibição expressa de restrições de hardware/assinatura digital que impeçam o usuário de executar versões modificadas do software em dispositivos de consumo (*Installation Information* / anti-tivoização, Seção 6).
 - **Compatibilidade com componentes:** Altamente compatível com o ecossistema GNU/Linux e componentes Qt licenciados sob LGPLv3 ou GPLv3. Pode incorporar dependências sob MIT e Apache-2.0 sem violação.
 - **Impacto na distribuição Linux:** O padrão histórico e nativo de aplicativos de desktop do ecossistema Linux livre (KDE, GNOME, etc.).
-- **Impacto em contribuições:** Garante que todas as melhorias e correções feitas pela comunidade ou por fabricantes permaneçam públicas e abertas. Pode desincentivar empresas que desejem embutir a base do Limivra em produtos proprietários fechados.
+- **Impacto em contribuições:** Garante que melhorias e correções distribuídas publicamente pela comunidade ou por fabricantes permaneçam abertas sob os mesmos termos. Pode desincentivar empresas que desejem distribuir a base do Limivra em produtos proprietários fechados.
 - **Riscos específicos para o Limivra:** Se no futuro for cogitado um modelo de licenciamento duplo comercial ou reutilização de partes do código em plataformas móveis ou ambientes proprietários restritos, a GPLv3 impõe limites rígidos.
 
 ---
@@ -94,10 +94,10 @@ Para a escolha da licença de código aberto do Limivra, foram analisadas três 
 | **Concessão explícita de patentes** | Não (silente) | Sim (expressa, Seção 3) | Sim (expressa, Seção 11) |
 | **Retaliação defensiva de patentes** | Não | Sim | Sim |
 | **Cláusula anti-tivoização** | Não | Não | Sim (Seção 6) |
-| **Preservação de avisos / Notices** | Sim (no cabeçalho/arquivo) | Sim (requer arquivo `NOTICE` se presente) | Sim (avisos de copyright e GPL intactos) |
+| **Preservação de avisos / Notices** | Sim (no cabeçalho/arquivo) | Sim (preservar licença, avisos e `NOTICE` pertinente de origem) | Sim (avisos de copyright e GPL intactos) |
 | **Rastreamento de alterações** | Não exige | Sim (declarar arquivos alterados) | Sim (destacar alterações e datas) |
 | **Compatibilidade com scrcpy** | Compatível (scrcpy como processo ou lib) | Compatibilidade direta e idêntica | Compatível (GPLv3 absorve permissivas) |
-| **Compatibilidade com Qt 6 (LGPLv3)** | Compatível (com link dinâmico e relink) | Compatível (com link dinâmico e relink) | Compatibilidade total (mesma família v3) |
+| **Compatibilidade com Qt 6 (LGPLv3)** | Compatível (preferencialmente link dinâmico; ou estático com objetos/relink) | Compatível (preferencialmente link dinâmico; ou estático com objetos/relink) | Compatibilidade total (mesma família v3) |
 | **Compatibilidade com Qt 6 (GPLv3)** | Incompatível se linkado estaticamente em binário puramente MIT | Incompatível se linkado em binário puramente Apache-2.0 | Totalmente compatível (unificação sob GPLv3) |
 | **Ecossistema Rust** | Padrão dual (`MIT OR Apache-2.0`) | Padrão dual (`MIT OR Apache-2.0`) | Compatível com crates permissivas |
 | **Acolhimento em distros Linux** | Universal | Universal | Universal |
@@ -113,8 +113,8 @@ O projeto Limivra planeja interagir com múltiplos componentes de naturezas de l
 
 | Componente | Papel no Limivra | Licença oficial | Fonte primária verificada | Modalidade de integração | Obrigações principais |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **scrcpy** | Backend de captura e controle | Apache-2.0 | `https://github.com/Genymobile/scrcpy/blob/master/LICENSE` | Subprocesso independente (`ADR-0001`) | Preservar notices; se redistribuído em bundle, incluir licença Apache-2.0 e `NOTICE`. |
-| **Qt 6 (Core/GUI/Quick)** | Interface gráfica (planejada) | LGPL-3.0 / GPL-3.0 / Comercial | `https://doc.qt.io/qt-6/licensing.html` e `https://www.qt.io/development/open-source-lgpl-obligations` | Link dinâmico (`shared library`) | Fornecer fonte da biblioteca Qt; permitir relink/substituição pelo usuário; fornecer instruções de instalação; cumprir notices. |
+| **scrcpy** | Backend de captura e controle | Apache-2.0 | `https://github.com/Genymobile/scrcpy/blob/master/LICENSE` | Subprocesso independente (`ADR-0001`) | Preservar licença e avisos de copyright; se redistribuído em bundle e houver `NOTICE` de origem, incluir seus termos pertinentes. |
+| **Qt 6 (Core/GUI/Quick)** | Interface gráfica (planejada) | LGPL-3.0 / GPL-3.0 / Comercial | `https://doc.qt.io/qt-6/licensing.html` e `https://www.qt.io/development/open-source-lgpl-obligations` | Link dinâmico (preferencial) ou estático condicional | Permitir ao usuário relink/substituição da biblioteca; fornecer código-fonte correspondente da biblioteca (ou oferta por escrito); fornecer instruções de instalação; cumprir avisos de licença. |
 | **Qt 6 (Módulos GPL)** | Ex: Qt Wayland Compositor, Qt Quick 3D | GPL-3.0 / Comercial | `https://doc.qt.io/qt-6/licensing.html` | Não planejado no MVP (`UNKNOWN` / condicional) | Se qualquer módulo GPLv3 for linkado, a aplicação inteira deve ser licenciada sob GPLv3. |
 | **ADB / Platform-Tools** | Descoberta e ponte USB/Wi-Fi | Apache-2.0 (código AOSP) / Termos do SDK Google | `https://developer.android.com/studio/terms` e AOSP | Invocação como utilitário externo do host | Termos do SDK proíbem redistribuição de binários do SDK sem permissão (Cláusula 3.4), mas componentes AOSP open source seguem licença própria (Cláusula 3.5). |
 | **Rust Crates** | `SessionCore` e adaptadores | Proposta (`UNKNOWN` até criação do `Cargo.toml`) | Comunidade crates.io / `docs/planning/backlog.md` | Compilação estática no binário nativo | Auditar `cargo-deny` / `cargo-license` na criação de [#15](https://github.com/pedro-labsabs/limivra/issues/15); cumprir avisos de licenças MIT/Apache/BSD. |
@@ -129,20 +129,23 @@ O projeto Limivra planeja interagir com múltiplos componentes de naturezas de l
 - **Execução como processo externo (`ADR-0001`):** O Limivra propõe invocar o scrcpy como binário separado (`Process::spawn`), comunicando-se por flags de linha de comando, pipes e controle de ciclo de vida (`PID`). No âmbito jurídico tradicional, processos desacoplados que operam no nível do sistema operacional comunicando-se via IPC padrão não formam um trabalho derivado único restritivo.
 - **Distribuição independente vs. conjunta:**
   - *Consumo de ferramenta externa pré-instalada:* O Limivra não embute nem redistribui o binário do scrcpy. Não há obrigação de redistribuir o código do scrcpy, bastando referenciar o software nas atribuições de terceiros.
-  - *Redistribuição de pacote conjunto (bundle):* Caso um instalador do Limivra (ex: Flatpak com extensão ou pacote "all-in-one") redistribua o binário compilado do `scrcpy` e seu `scrcpy-server.jar`, devem ser integralmente respeitadas as condições da Seção 4 do Apache-2.0 (cópia da licença, preservação de avisos de copyright e menção ao `NOTICE` original do Genymobile).
+  - *Redistribuição de pacote conjunto (bundle):* Caso um instalador ou pacote futuro do Limivra venha a redistribuir o binário compilado do `scrcpy` e seu `scrcpy-server.jar`, devem ser observadas as condições da Seção 4 da licença Apache-2.0: fornecer cópia da licença, manter avisos de copyright/patente/marca e, caso a versão original do scrcpy inclua um arquivo `NOTICE`, reproduzir em local apropriado os avisos pertinentes a essa distribuição.
 
 #### B. Qt 6
 - **Modularidade de licenças:** A The Qt Company adota um modelo de licenciamento misto (multi-licensing):
   - *Módulos Base essenciais (Qt Core, Qt GUI, Qt Widgets, Qt Network, Qt QML, Qt Quick):* Disponíveis sob **LGPLv3**, **GPLv3** e licença comercial.
   - *Módulos e extensões exclusivamente sob GPLv3 (ou comercial):* Conforme documentado oficialmente em `https://doc.qt.io/qt-6/licensing.html`, módulos como `Qt Wayland Compositor`, `Qt Network Authorization`, `Qt Quick 3D`, `Qt Quick 3D Physics`, `Qt Quick Timeline` e ferramentas de compilação QML proprietárias **NÃO estão disponíveis sob LGPLv3**, mas apenas sob **GPLv3** (ou comercial).
   - *Atenção arquitetural crítica:* O Limivra planeja atuar como cliente gráfico em Wayland, consumindo protocolos Wayland existentes, e **não como compositor Wayland**. Portanto, o módulo `Qt Wayland Compositor` não é necessário. O cliente Qt conecta-se ao compositor do sistema via plugin de plataforma `libqwayland` (que acompanha o Qt Base sob LGPLv3).
-- **Obrigações da LGPLv3 para a aplicação:**
-  - **Dynamic Linking:** O Limivra deve compilar e linkar dinamicamente contra as bibliotecas compartilhadas do Qt (`.so`).
-  - **Re-link / Substituição pelo usuário:** O usuário final tem o direito garantido de substituir ou atualizar as bibliotecas Qt no seu ambiente e rodar o aplicativo com essas bibliotecas modificadas.
-  - **Informações de Instalação (Anti-tivoização):** Devem ser fornecidas instruções suficientes de como o aplicativo executa com bibliotecas relinkadas.
-  - **Código-fonte correspondente:** O distribuidor da aplicação deve fornecer o código-fonte correspondente das bibliotecas Qt utilizadas (ou oferta formal por escrito), mesmo que não tenham sido alteradas.
-  - **Avisos de copyright e licença:** A UI do Limivra ou sua documentação deve exibir que o software utiliza bibliotecas Qt sob LGPLv3 e fornecer link para o texto da licença.
-- **Impacto se a licença do Limivra for permissiva (MIT ou Apache-2.0):** É juridicamente viável manter o código do Limivra sob MIT ou Apache-2.0 e linkar dinamicamente ao Qt sob LGPLv3, desde que atendidos todos os requisitos de relink, dynamic linking e entrega do fonte do Qt. Se a licença do Limivra for GPL-3.0-or-later, a conformidade é facilitada porque todo o conjunto opera na mesma filosofia copyleft.
+- **Obrigações da LGPLv3 e modalidades de linking:**
+  - **Dynamic Linking (caminho preferencial e mais simples):** A documentação oficial do Qt recomenda o linking dinâmico com bibliotecas compartilhadas (`.so`), pois permite que a aplicação permaneça como uma "obra que utiliza a biblioteca" (*work that uses the library*), facilitando que o usuário substitua ou atualize as bibliotecas Qt no sistema de forma transparente.
+  - **Static Linking (admissibilidade condicional):** O linking estático contra bibliotecas LGPLv3 não é categoricamente vedado pela licença, mas impõe exigências operacionais complexas: o distribuidor precisa fornecer os arquivos-objeto compilados (`.o`) ou código-fonte da aplicação e instruções detalhadas de linkagem, permitindo ao usuário relinkar a aplicação contra uma versão modificada da biblioteca Qt, ou licenciar a aplicação inteira sob termos compatíveis (como a própria LGPLv3/GPLv3).
+  - **Re-link / Substituição pelo usuário:** O usuário final tem o direito garantido de substituir ou atualizar as bibliotecas Qt utilizadas e executar o aplicativo resultante com essas bibliotecas modificadas.
+  - **Informações de Instalação (Anti-tivoização):** Conforme a Seção 6 da GPLv3 (incorporada à LGPLv3), em dispositivos de consumo (*User Products*), devem ser fornecidas informações de instalação suficientes para que uma versão modificada da biblioteca possa ser executada no ambiente de destino.
+  - **Código-fonte correspondente da biblioteca:** O distribuidor da aplicação deve fornecer o código-fonte correspondente completo das bibliotecas Qt utilizadas (ou disponibilizar uma oferta formal válida por escrito com instruções de acesso), mesmo que as bibliotecas Qt não tenham sofrido nenhuma modificação.
+  - **Avisos de copyright e licença:** A aplicação deve exibir avisos proeminentes de que utiliza bibliotecas Qt sob LGPLv3 e disponibilizar cópia ou link para os textos das licenças aplicáveis.
+- **Impacto da escolha de licença do Limivra frente ao Qt:**
+  - Se o Limivra adotar uma licença permissiva (**MIT** ou **Apache-2.0**), o linking dinâmico contra o Qt LGPLv3 é a abordagem viável recomendada para preservar a licença permissiva do código próprio, desde que satisfeitas as condições de relink, notices e oferta de código-fonte correspondente do Qt.
+  - Se o Limivra adotar **GPL-3.0-or-later**, a conformidade é simplificada, pois tanto o linking dinâmico quanto o estático com Qt sob LGPLv3/GPLv3 se harmonizam diretamente no mesmo framework de copyleft v3.
 
 #### C. ADB (Android Debug Bridge) e Android Platform-Tools
 - **Distinção fundamental entre código AOSP e SDK Binário do Google:**
@@ -197,19 +200,21 @@ As obrigações legais variam radicalmente conforme o modelo de entrega do softw
 
 ### 5.2 Cenário B — Pacote de distribuição Linux nativa (Debian, Fedora, Arch)
 - **Topologia:** O pacote `.deb`, `.rpm` ou PKGBUILD compila o Limivra e declara em seus metadados (`Depends:`) as dependências `scrcpy`, `android-tools` e os pacotes de runtime do `qt6-base`.
-- **Obrigações conhecidas:**
-  - A distribuição Linux é responsável por gerenciar e empacotar o código-fonte correspondente das bibliotecas Qt e do adb/scrcpy;
-  - O mantenedor do Limivra só precisa fornecer o código-fonte limpo do Limivra com a licença declarada (`LICENSE`) e metadados SPDX nos manifestos de empacotamento;
-  - A substituição de bibliotecas Qt é nativa pelo gestor de pacotes da distribuição (`apt`, `dnf`, `pacman`).
-- **Complexidade jurídica:** Baixa a moderada. Segue o padrão estabelecido da comunidade Linux.
+- **Separação de responsabilidades e obrigações:**
+  - *Distribuição mantida por terceiros (mantenedores da distro):* Quando a distribuição Linux compila e empacota o software de forma independente, os mantenedores da distribuição gerenciam os pacotes binários e os repositórios de código-fonte correspondente das bibliotecas Qt e das ferramentas `android-tools`/`scrcpy`. O projeto Limivra é responsável por fornecer código-fonte com metadados SPDX claros, texto de licença aplicável e atribuições cabíveis.
+  - *Distribuição de pacotes nativos diretos pelo Limivra (PPA / repositório próprio):* Caso o próprio projeto Limivra venha a hospedar e distribuir binários compilados pré-empacotados, o projeto assume responsabilidade direta por comprovar que os pacotes disponibilizam ou referenciam validamente o código-fonte correspondente e cumprem as cláusulas de atribuição e relink.
+  - A substituição de bibliotecas Qt em runtime depende da integridade do ecossistema de pacotes dinâmicos da distribuição.
+- **Complexidade jurídica:** Baixa a moderada, devendo a conformidade prática ser verificada no marco de packaging ([#33](https://github.com/pedro-labsabs/limivra/issues/33)).
 
 ### 5.3 Cenário C — Bundle autocontido / conteinerizado (Flatpak, AppImage)
-- **Topologia:** O pacote distribui uma sandbox com todas as bibliotecas necessárias para executar em qualquer distribuição, incluindo Qt 6, runtime C/C++, e eventualmente ferramentas de captura.
-- **Obrigações conhecidas:**
-  - **Atenção crítica à LGPLv3 do Qt:** Como as bibliotecas do Qt estão empacotadas no bundle/runtime, o fornecedor do pacote DEVE permitir a substituição dessas bibliotecas pelo usuário ou prover mecanismo para re-execução (no Flatpak, isso é resolvido usando o KDE/GNOME Application Runtime padrão sob LGPLv3 oficial; no AppImage, o usuário deve ser capaz de descompactar o AppImage, substituir os `.so` e remontar);
-  - Obrigação de fornecer o código-fonte correspondente completo de todas as bibliotecas LGPLv3 contidas no pacote;
-  - Inclusão de um diretório consolidado de licenças e `NOTICE` para todos os componentes bundled.
-- **Complexidade jurídica:** Alta. Exige auditoria rigorosa de cada arquivo binário embutido na imagem final.
+- **Topologia:** O pacote distribui uma sandbox com bibliotecas de apoio para executar entre diferentes distribuições, potencialmente incluindo módulos do Qt 6, runtime de suporte e ferramentas auxiliares.
+- **Obrigações e validação concreta de conformidade (sem presunções automáticas):**
+  - **Atenção crítica à LGPLv3 do Qt:** A simples inclusão de bibliotecas Qt em um runtime ou bundle **não garante automaticamente a conformidade com a LGPLv3**. O distribuidor do pacote (seja a organização do Limivra ou um terceiro) deve assegurar ativamente os requisitos da licença:
+    - *Substituição efetiva de bibliotecas:* O usuário deve dispor de meios documentados e executáveis para substituir os arquivos de biblioteca Qt contidos no bundle e rodar a aplicação com a versão modificada (por exemplo, via substituição no runtime/extension do Flatpak ou extração/reempacotamento de AppImage).
+    - *Disponibilização de código-fonte correspondente:* O distribuidor deve fornecer ou oferecer de forma válida o código-fonte correspondente completo da versão exata das bibliotecas LGPLv3 embutidas.
+    - *Informações de Instalação:* Cumprimento da Seção 6 da GPLv3 (incorporada à LGPLv3) com instruções operacionais.
+    - *Atribuições e avisos:* Consolidação auditada de textos de licença, avisos de direitos autorais e eventuais arquivos `NOTICE` pertinentes dos componentes empacotados.
+- **Complexidade jurídica:** Alta. A viabilidade técnica e a validação do pipeline de empacotamento exigirão verificação e testes específicos na issue [#33](https://github.com/pedro-labsabs/limivra/issues/33).
 
 ---
 
@@ -257,7 +262,7 @@ Para concluir a governança da issue [#7](https://github.com/pedro-labsabs/limiv
 > - **Opção 3:** `MIT` (Permissiva minimalista clássica)
 > - **Opção 4:** Modelo misto (ex: `Apache-2.0` para o núcleo Rust e `GPL-3.0-or-later` para o frontend/aplicação final)
 
-> **Pergunta 2:** Qual é o nome ou entidade de copyright que deve constar no cabeçalho do arquivo de licença (ex: `Copyright (c) 2026 Pedro Goulart Espinola and Limivra Contributors`)?
+> **Pergunta 2:** Qual é a entidade ou titular de direitos autorais a constar no cabeçalho dos arquivos de licença e avisos de copyright (exemplo de formato: `Copyright (c) 2026 <titular a decidir>`)?
 
 > **Pergunta 3:** Fica autorizada a exigência de DCO (Developer Certificate of Origin com `git commit -s`) para futuras contribuições externas?
 
@@ -268,7 +273,7 @@ Para concluir a governança da issue [#7](https://github.com/pedro-labsabs/limiv
 Estas etapas **NÃO fazem parte deste slice documental** e devem ser executadas em uma nova branch/PR dedicada após a decisão humana registrada:
 
 - [ ] **1. Criação do arquivo `LICENSE`:** Adicionar o texto oficial integral da licença aprovada na raiz do repositório.
-- [ ] **2. Criação do arquivo `NOTICE`:** Se a licença selecionada for Apache-2.0 (ou se mantido arquivo de atribuições para GPLv3), documentar direitos autorais e créditos ao scrcpy, Qt e Android Open Source Project.
+- [ ] **2. Avaliação de arquivo `NOTICE` e atribuições:** Caso a licença aprovada seja Apache-2.0 ou haja obrigação/conveniência de consolidar avisos de terceiros recebidos (scrcpy, Qt, AOSP), auditar as atribuições pertinentes e estruturar o arquivo `NOTICE` correspondente.
 - [ ] **3. Registro formal em ADR:** Elaborar e submeter a `ADR-0004-project-license.md` registrando a motivação, alternativas rejeitadas e consequências da escolha aprovada.
 - [ ] **4. Atualização de documentação:**
   - Atualizar [`README.md`](../../README.md) informando a licença SPDX oficial;
