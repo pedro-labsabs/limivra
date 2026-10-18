@@ -98,7 +98,7 @@ Para a escolha da licença de código aberto do Limivra, foram analisadas três 
 | **Rastreamento de alterações** | Não exige | Sim (declarar arquivos alterados) | Sim (destacar alterações e datas) |
 | **Compatibilidade com scrcpy** | Compatível (scrcpy como processo ou lib) | Compatibilidade direta e idêntica | Compatível (GPLv3 absorve permissivas) |
 | **Compatibilidade com Qt 6 (LGPLv3)** | Compatível (preferencialmente link dinâmico; ou estático com objetos/relink) | Compatível (preferencialmente link dinâmico; ou estático com objetos/relink) | Compatibilidade total (mesma família v3) |
-| **Compatibilidade com Qt 6 (GPLv3)** | Incompatível se linkado estaticamente em binário puramente MIT | Incompatível se linkado em binário puramente Apache-2.0 | Totalmente compatível (unificação sob GPLv3) |
+| **Compatibilidade com Qt 6 (GPLv3-only)** | Incompatível manter licença puramente MIT na distribuição combinada: o uso de módulos GPLv3 obriga a aplicação distribuída a cumprir a GPLv3 (tanto em link dinâmico quanto estático) | Incompatível manter licença puramente Apache-2.0 na distribuição combinada: o uso de módulos GPLv3 obriga a aplicação distribuída a cumprir a GPLv3 (tanto em link dinâmico quanto estático) | Totalmente compatível (unificação sob GPLv3 de toda a aplicação e módulos) |
 | **Ecossistema Rust** | Padrão dual (`MIT OR Apache-2.0`) | Padrão dual (`MIT OR Apache-2.0`) | Compatível com crates permissivas |
 | **Acolhimento em distros Linux** | Universal | Universal | Universal |
 | **Apropriação proprietária por terceiros** | Possível (código pode ser fechado) | Possível (código pode ser fechado) | Proibida (obrigação de reciprocidade aberta) |
