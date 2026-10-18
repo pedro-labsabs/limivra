@@ -23,6 +23,7 @@ Limivra é uma proposta de aplicativo livre para acessar e controlar um telefone
 - [Plano de investigação REA](docs/research/rea-plan.md)
 - [Roadmap e gates](docs/planning/roadmap.md)
 - [Backlog, milestones e épicos](docs/planning/backlog.md)
+- [Manifesto de issues e dependências](docs/planning/issue-manifest.json)
 - [Estratégia de teste](docs/testing/strategy.md)
 - [Guia dos agentes](AGENTS.md)
 - [Contribuição](CONTRIBUTING.md) e [segurança](SECURITY.md)

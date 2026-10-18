@@ -1,0 +1,297 @@
+{
+  "repository": "https://github.com/pedro-labsabs/limivra",
+  "generated_on": "2026-10-18",
+  "epics": [
+    {
+      "key": "foundation",
+      "number": 1,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/1"
+    },
+    {
+      "key": "research",
+      "number": 2,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/2"
+    },
+    {
+      "key": "transport",
+      "number": 3,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/3"
+    },
+    {
+      "key": "virtual",
+      "number": 4,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/4"
+    },
+    {
+      "key": "experience",
+      "number": 5,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/5"
+    },
+    {
+      "key": "quality",
+      "number": 6,
+      "url": "https://github.com/pedro-labsabs/limivra/issues/6"
+    }
+  ],
+  "tasks": [
+    {
+      "key": "license",
+      "issue": 7,
+      "epic": 1,
+      "milestone": "M0",
+      "depends_on": []
+    },
+    {
+      "key": "design",
+      "issue": 8,
+      "epic": 1,
+      "milestone": "M0",
+      "depends_on": []
+    },
+    {
+      "key": "spike",
+      "issue": 9,
+      "epic": 1,
+      "milestone": "M0",
+      "depends_on": []
+    },
+    {
+      "key": "matrix",
+      "issue": 10,
+      "epic": 1,
+      "milestone": "M0",
+      "depends_on": [
+        9
+      ]
+    },
+    {
+      "key": "stack",
+      "issue": 11,
+      "epic": 1,
+      "milestone": "M0",
+      "depends_on": [
+        8
+      ]
+    },
+    {
+      "key": "rea-legal",
+      "issue": 12,
+      "epic": 2,
+      "milestone": "M0",
+      "depends_on": []
+    },
+    {
+      "key": "rea-aosp",
+      "issue": 13,
+      "epic": 2,
+      "milestone": "M0",
+      "depends_on": [
+        12
+      ]
+    },
+    {
+      "key": "rea-gaps",
+      "issue": 14,
+      "epic": 2,
+      "milestone": "M2",
+      "depends_on": [
+        9,
+        13
+      ]
+    },
+    {
+      "key": "skeleton",
+      "issue": 15,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        8,
+        11
+      ]
+    },
+    {
+      "key": "adb",
+      "issue": 16,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        15
+      ]
+    },
+    {
+      "key": "state",
+      "issue": 17,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        15
+      ]
+    },
+    {
+      "key": "scrcpy",
+      "issue": 18,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        16,
+        17
+      ]
+    },
+    {
+      "key": "ui-picker",
+      "issue": 19,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        16,
+        17
+      ]
+    },
+    {
+      "key": "usb-e2e",
+      "issue": 20,
+      "epic": 3,
+      "milestone": "M1",
+      "depends_on": [
+        18,
+        19
+      ]
+    },
+    {
+      "key": "flag-gate",
+      "issue": 21,
+      "epic": 4,
+      "milestone": "M2",
+      "depends_on": [
+        9,
+        18
+      ]
+    },
+    {
+      "key": "vd-provider",
+      "issue": 22,
+      "epic": 4,
+      "milestone": "M2",
+      "depends_on": [
+        21
+      ]
+    },
+    {
+      "key": "vd-fallback",
+      "issue": 23,
+      "epic": 4,
+      "milestone": "M2",
+      "depends_on": [
+        22
+      ]
+    },
+    {
+      "key": "vd-matrix",
+      "issue": 24,
+      "epic": 4,
+      "milestone": "M2",
+      "depends_on": [
+        10,
+        23
+      ]
+    },
+    {
+      "key": "ux-session",
+      "issue": 25,
+      "epic": 5,
+      "milestone": "M3",
+      "depends_on": [
+        19,
+        18
+      ]
+    },
+    {
+      "key": "input",
+      "issue": 26,
+      "epic": 5,
+      "milestone": "M3",
+      "depends_on": [
+        25
+      ]
+    },
+    {
+      "key": "wifi",
+      "issue": 27,
+      "epic": 5,
+      "milestone": "M3",
+      "depends_on": [
+        18,
+        26
+      ]
+    },
+    {
+      "key": "freeform",
+      "issue": 28,
+      "epic": 5,
+      "milestone": "M3",
+      "depends_on": [
+        24
+      ]
+    },
+    {
+      "key": "launcher",
+      "issue": 29,
+      "epic": 5,
+      "milestone": "M3",
+      "depends_on": [
+        22,
+        25
+      ]
+    },
+    {
+      "key": "qa-mocks",
+      "issue": 30,
+      "epic": 6,
+      "milestone": "M1",
+      "depends_on": [
+        15
+      ]
+    },
+    {
+      "key": "threat",
+      "issue": 31,
+      "epic": 6,
+      "milestone": "M0",
+      "depends_on": [
+        8
+      ]
+    },
+    {
+      "key": "ci-matrix",
+      "issue": 32,
+      "epic": 6,
+      "milestone": "M4",
+      "depends_on": [
+        30,
+        20
+      ]
+    },
+    {
+      "key": "package",
+      "issue": 33,
+      "epic": 6,
+      "milestone": "M4",
+      "depends_on": [
+        7,
+        20
+      ]
+    },
+    {
+      "key": "release",
+      "issue": 34,
+      "epic": 6,
+      "milestone": "M4",
+      "depends_on": [
+        33,
+        23,
+        27,
+        31
+      ]
+    }
+  ]
+}
