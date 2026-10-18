@@ -1,0 +1,29 @@
+name: Task / Spike
+description: Slice verificável do Limivra
+title: "[TASK] "
+labels: ["type:task", "status:needs-evidence"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo e contexto
+      description: O que muda e por quê?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo e fora de escopo
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite e evidência
+      description: Escreva testes observáveis e saída esperada.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependências, riscos e permissões

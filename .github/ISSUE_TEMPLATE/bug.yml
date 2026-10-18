@@ -1,0 +1,22 @@
+name: Bug
+description: Falha reproduzível no Limivra
+title: "[BUG] "
+labels: ["type:bug", "status:needs-evidence"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reprodução sanitizada
+      description: Inclua ambiente, comandos e passos sem informações privadas.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Esperado e observado
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacto e workaround
