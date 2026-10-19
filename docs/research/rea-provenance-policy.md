@@ -16,7 +16,7 @@ Esta política estabelece os critérios operacionais, éticos, técnicos e legai
 2. **Ausência de consultoria jurídica:** Este documento constitui governança operacional técnica interna e **não** substitui análise jurídica qualificada nem concede autorização legal genérica. Interpretações contratuais (EULAs, ToS) e legais dependem de contexto territorial específico e avaliação humana qualificada.
 3. **Mera posse não confere autorização:** A disponibilidade técnica, posse de dispositivo, download público ou extração de binário/APK **não** autorizam automaticamente decompilação, desmontagem, análise estática/dinâmica ou evasão de proteções.
 4. **Sem concessão implícita ou automática:** Nenhuma investigação sobre software proprietário, binários de terceiros ou protocolos fechados pode ocorrer sem aprovação humana expressa e registrada.
-5. **Independência do MVP de MIRROR:** A pesquisa REA é uma trilha paralela e exploratória. O MVP de espelhamento básico (Issue #1, Marco M1) independe de qualquer resultado ou execução de engenharia reversa de componentes proprietários (baseia-se em APIs públicas AOSP e `scrcpy`, conforme [ADR-0001](../architecture/decisions/ADR-0001-scrcpy-external.md)).
+5. **Independência do MVP de MIRROR:** A pesquisa REA é uma trilha paralela e exploratória. O MVP de espelhamento básico (Épico #3 / Milestone M1, contendo as issues #15 a #20) independe de qualquer resultado ou execução de engenharia reversa de componentes proprietários (baseia-se em APIs públicas AOSP e `scrcpy`, conforme [ADR-0001](../architecture/decisions/ADR-0001-scrcpy-external.md)). O Épico #1 refere-se à governança e arquitetura do Milestone M0.
 6. **Não aprovação de arquitetura ou capacidades:** A presente proposta documental não homologa stacks de implementação (ex.: Qt/Rust), não comprova suporte de ROMs específicas (HyperOS, One UI, AOSP puro) e não autoriza transição para marcos subsequentes (M1/#15).
 
 ---
@@ -53,7 +53,9 @@ Antes de qualquer manipulação de artefato, o pesquisador deve registrar privad
 - **Zero artefato sensível no Git:** É expressamente proibido fazer commit, criar PR ou armazenar no GitHub quaisquer binários, APKs, odex, classes `.dex`, dumps de memória, dumps de ROM, arquivos de configuração proprietários ou capturas de tráfego bruto contendo tokens.
 - **Ocultação de hashes de material proprietário não público:** Hashes SHA-256 e nomes de pacotes internos não documentados publicamente não devem ser publicados no repositório para evitar infração ou rastreamento de vazamentos. O registro é mantido em planilha/arquivo de custódia interno privado.
 - **Sanitização de logs e relatórios:** Todo relatório público de findings deve passar por triagem prévia para remoção de caminhos locais de arquivos, identificadores de hardware (IMEI, números de série, endereços MAC reais), chaves privadas, cookies e assinaturas binárias proprietárias.
-- **Retenção e Descarte:** Artefatos intermediários de pesquisa devem ser armazenados em diretório efêmero local isolado fora da árvore do repositório (`.git`), com ciclo de descarte definido assim que a especificação clean-room for consolidada.
+- **Custódia, Acesso e Retenção Condicionada:** O mantenedor do projeto é o responsável primário pela custódia do registro privado e pelo controle estrito de acesso. Cópias de trabalho e metadados de artefatos de pesquisa autorizados devem ser armazenados exclusivamente em diretório local efêmero, isolado fora da árvore do repositório (`.git`). O acesso é restrito ao pesquisador designado e revogável a qualquer momento por determinação do mantenedor. O período de retenção é rigorosamente proporcional à finalidade demonstrada da pesquisa e às obrigações legais aplicáveis, sendo reavaliado formalmente ao término da elaboração da especificação comportamental (sem adoção de prazo universal arbitrário).
+- **Gate de Aprovação para Descarte e Exclusão Destrutiva:** Nenhuma exclusão definitiva, descarte destrutivo de ambiente ou eliminação de registros de custódia pode ocorrer de forma silenciosa ou automática por script/agente. Todo descarte exige registro prévio de aprovação humana expressa do mantenedor, garantindo a preservação auditável de evidências de proveniência e cadeia de custódia pelo período legalmente exigido.
+- **Triagem, Contenção Segura e Resposta a Incidentes (PII / Segredos):** Caso dados pessoais identificáveis (PII), credenciais ou segredos sejam capturados incidentalmente durante testes autorizados, aplica-se protocolo estrito de contenção imediata: proibição de publicação no repositório, proibição de transmissão externa e proibição de duplicação desnecessária. Os dados afetados devem ser imediatamente isolados em ambiente local protegido. O incidente e o escopo do material capturado devem ser reportados formalmente ao mantenedor para deliberação de descarte seguro, em conformidade com as legislações de proteção de dados e diretrizes de privacidade do projeto.
 
 ---
 
@@ -120,7 +122,7 @@ Antes de iniciar qualquer atividade investigativa ou teste de interoperabilidade
 | **Artefato sem cadeia de custódia, origem anônima ou fonte de download não verificável** | **STOP** | Rejeição irrevogável; não baixar, não transferir, não analisar. |
 | **Exigência de quebra de DRM, evasão de `FLAG_SECURE` ou contorno de criptografia** | **STOP** | Bloqueio imediato; respeitar restrição de segurança da plataforma. |
 | **Exigência de exploração de vulnerabilidade, root forçado ou modificação de ROM base** | **STOP** | Bloqueio imediato; alinhamento obrigatório com [ADR-0003](../architecture/decisions/ADR-0003-no-root.md). |
-| **Acesso a credenciais de usuário, dados pessoais (PII), fotos, mensagens ou contas protegidas** | **STOP** | Bloqueio imediato; exclusão de qualquer dado sensível coletado incidentalmente. |
+| **Acesso a credenciais de usuário, dados pessoais (PII), fotos, mensagens ou contas protegidas** | **STOP** | Bloqueio imediato; contenção e isolamento seguro do material (não publicar, não duplicar); encaminhar incidente ao mantenedor para descarte seguro aprovado. |
 
 ---
 
@@ -192,29 +194,38 @@ Todo resultado ou hipótese formulada a partir da pesquisa REA ou de testes de i
 ## 8. Integração com o Roadmap e Relações entre Issues
 
 ```
-                                 [Issue #12]
-                    (Política de Proveniência REA)
-                                      |
-                     (Revisão e Aprovação Humana)
-                                      v
-                                 [Issue #13]
-                    (Investigação Técnica Inicial)
-               - Foco estrito: Fontes AOSP / scrcpy públicas
-               - Testes de displays virtuais e permissões padrão
-                                      |
-                       +--------------+---------------+
-                       |                              |
-                       v                              v
-                  [Issue #14]                    [Issue #1]
-             (Pesquisa Aprofundada)            (MVP MIRROR - M1)
-         - Condicionada a autorização       - Independente de #14
-           humana explícita para            - Foco em usabilidade e
-           qualquer análise CAT-C             estabilidade de espelhamento
+       TRILHA REA (Épico #2)                   TRILHA DISPOSITIVO / CORE
+ ------------------------------------     ------------------------------------
+             [Issue #12]
+    (Política de Proveniência REA)
+                  |
+    (Revisão e Aprovação Humana)
+                  v
+             [Issue #13]                               [Issue #9]
+    (Investigação AOSP / scrcpy)                   (Hardware SPIKE-001)
+     - Foco estrito em fontes públicas                  |
+                  |                                     |
+                  +------------------+------------------+
+                                     |
+                                     v
+                                [Issue #14]
+                        (Gaps e Pesquisa Aprofundada)
+                        - Depende formalmente de #9 e #13
+                        - Análise proprietária CAT-C exige
+                          autorização humana específica
+
+ =============================================================================
+              TRILHA PARALELA INDEPENDENTE: MVP MIRROR (Milestone M1)
+ -----------------------------------------------------------------------------
+             [Épico #3] (Transporte & Sessão Linux USB MVP)
+             - Folhas de implementação: Issues #15 a #20
+             - Independente de #12, #13 e #14
+             - Baseia-se exclusivamente em APIs AOSP e scrcpy (ADR-0001)
 ```
 
-1. **Relação com a Issue #13:** A execução da Issue #13 (Investigação de displays virtuais e comportamento multitelas) deve ser regida por esta política. A Issue #13 **deve obrigatoriamente iniciar por documentação pública AOSP e código aberto (`scrcpy`)**. Nenhuma análise de artefatos de fabricantes (CAT-C) poderá ser realizada na #13 sem abertura de solicitação específica e autorização humana prévia.
-2. **Relação com a Issue #14 e Marcos Futuros:** A Issue #14 dependerá de conclusões sólidas e aprovadas das etapas anteriores.
-3. **Não interferência no MVP de Espelhamento:** Reitera-se que o desenvolvimento do espelhamento base (Mirroring / M1) não aguarda nem depende das investigações de engenharia reversa de terceiros, preservando a entrega de valor de forma ágil e segura.
+1. **Relação com a Issue #13:** A execução da Issue #13 (Investigação de displays virtuais e comportamento multitelas sob o Épico #2) é formalmente dependente da aprovação prévia desta política (#12). A Issue #13 **deve obrigatoriamente iniciar por documentação pública AOSP e código aberto (`scrcpy`)**. Nenhuma análise de artefatos de fabricantes (CAT-C) poderá ser realizada na #13 sem abertura de solicitação específica e autorização humana prévia.
+2. **Relação com a Issue #14 e Marco M2:** A Issue #14 (Estudo de gaps e pesquisa aprofundada) depende formalmente de duas frentes: os resultados observáveis do teste de hardware real ([Issue #9](https://github.com/pedro-labsabs/limivra/issues/9) / [SPIKE-001.md](SPIKE-001.md)) e a consolidação das APIs públicas da [Issue #13](https://github.com/pedro-labsabs/limivra/issues/13).
+3. **Não interferência e ausência de dependência para o MVP MIRROR:** Reitera-se que o desenvolvimento do MVP de espelhamento USB (Épico #3 / Milestone M1, composto pelas issues #15 a #20) ocorre em trilha paralela e independente. Não existe qualquer dependência de fluxo da pesquisa REA (#12, #13, #14) para o MVP de MIRROR, garantindo a entrega do produto sem bloqueios decorrentes de investigações exploratórias. O Épico #1 coordena a governança fundacional de M0, não se confundindo com o MVP de transporte.
 
 ---
 
