@@ -42,4 +42,4 @@ Limivra é uma proposta de aplicativo livre para acessar e controlar um telefone
 - [Multi-Display Android AOSP](https://source.android.com/docs/core/display/multi_display)
 - [REA](https://github.com/morluto/rea)
 
-**Licença:** escolha e arquivo LICENSE pendentes de decisão registrada no backlog. Repositório público não equivale, por si só, a uma licença open source.
+**Licença:** o código original do Limivra é licenciado sob a [Licença MIT](LICENSE). Dependências externas (como scrcpy e Qt) possuem licenças próprias e devem ter suas respectivas obrigações observadas na distribuição.
