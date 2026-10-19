@@ -41,8 +41,8 @@ Um erro conceitual frequente em projetos de integração Android-Linux é tratar
 |   renderização e orientação do     |   resolução, densidade (DPI) e   |   (freeform/floating).    |
 |   display físico nativo.           |   orientação.                    | * Pode ocorrer no display |
 | * Sem capacidade nativa de rodar   | * Pode hospedar tarefas          |   principal ou em um      |
-|   atividades independentes sem     |   próprias se configurado como   |   virtual display se o    |
-|   afetar a tela local.             |   público e com flag de toque.   |   WindowManager suportar. |
+|   atividades independentes sem     |   Android se configurado com as  |   virtual display se o    |
+|   afetar a tela local.             |   flags e permissões exigidas.   |   WindowManager suportar. |
 | * Não requer permissões especiais  | * Criação requer privilégios     | * Depende de flag da ROM  |
 |   para exibição padrão de tela.    |   específicos conforme flags.    |   (enable_freeform_support|
 +------------------------------------+----------------------------------+---------------------------+
@@ -55,12 +55,12 @@ Um erro conceitual frequente em projetos de integração Android-Linux é tratar
 
 ### 2.2 Virtual Display (Display Virtual Secundário)
 - **Definição técnica:** Instância de `android.view.Display` criada via `DisplayManager.createVirtualDisplay(...)` associada a uma `android.view.Surface` em memória, recebendo um `displayId` próprio (`displayId != DEFAULT_DISPLAY`).
-- **Comportamento no AOSP:** Opera como um display secundário lógico. Se criado com os privilégios corretos (`VIRTUAL_DISPLAY_FLAG_PUBLIC`, `VIRTUAL_DISPLAY_FLAG_TRUSTED`, `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY`), pode hospedar pilhas de atividades independentes (`ActivityStack` / `Task`), permitindo que um aplicativo rode na resolução remota sem interferir no display físico primário.
+- **Comportamento no AOSP:** Opera como um display secundário lógico. Se criado com as flags e privilégios pertinentes pelo servidor (`VIRTUAL_DISPLAY_FLAG_PUBLIC`, `VIRTUAL_DISPLAY_FLAG_TRUSTED`, `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY`), pode hospedar pilhas de atividades Android (`ActivityStack` / `Task`), permitindo que aplicativos Android rodem na resolução remota sem interferir no display físico primário.
 - **Relação com IME e Decorações:** O AOSP permite configurar decorações de sistema (barra de navegação, status bar, launcher dedicado) e política de teclado virtual (`DisplayWindowSettings#shouldShowSystemDecorsLocked`, `setDisplayImePolicy`).
 
 ### 2.3 Desktop Windowing (Modo Desktop / Freeform)
-- **Definição técnica:** Modo de gerenciamento de janelas (`WINDOWING_MODE_FREEFORM`) em que as atividades são dispostas em retângulos redimensionáveis com barra de título e controles de janela, em vez do modo tela cheia (`WINDOWING_MODE_FULLSCREEN`) ou tela dividida (`WINDOWING_MODE_MULTI_WINDOW`).
-- **Comportamento no AOSP:** Suportado formalmente pelo `WindowManagerService`. No AOSP base, requer ativação de opções de desenvolvedor (`enable_freeform_support`) ou configurações de sistema. O fato de um display virtual existir **não ativa automaticamente** janelas flutuantes se a ROM sobrepuser o gerenciador de janelas padrão com sua própria UI proprietária.
+- **Definição técnica:** Modo de gerenciamento de janelas (`WINDOWING_MODE_FREEFORM`) em que as atividades Android são dispostas em retângulos redimensionáveis com barra de título e controles de janela, em vez do modo tela cheia (`WINDOWING_MODE_FULLSCREEN`) ou tela dividida (`WINDOWING_MODE_MULTI_WINDOW`).
+- **Comportamento no AOSP:** Suportado formalmente pelo `WindowManagerService`. No AOSP base, requer ativação de opções de desenvolvedor (`enable_freeform_support`) ou configurações de sistema. O fato de um display virtual existir **não ativa automaticamente** janelas livres se a ROM sobrepuser o gerenciador de janelas padrão com sua própria UI proprietária.
 
 ---
 
@@ -92,31 +92,31 @@ A arquitetura de display e injeção do AOSP é estratificada em níveis rígido
 |                   |                                   |   avançadas se invocado via processo Java   |
 |                   |                                   |   executando sob o token do shell.          |
 |                   |                                   | - Permissão INJECT_EVENTS disponível no     |
-|                   |                                   |   AOSP base, mas frequentemente restrita    |
-|                   |                                   |   por fabricantes ("Security Settings").    |
+|                   |                                   |   AOSP base, mas passível de restrição      |
+|                   |                                   |   em opções de desenvolvedor OEM.           |
 +-------------------+-----------------------------------+---------------------------------------------+
 | Sistema Privilegi.| UID 1000 (system) / system_server | - Posse de INTERNAL_SYSTEM_WINDOW e         |
 |                   |                                   |   ACTIVITY_EMBEDDING irrestritos.           |
 |                   |                                   | - Controle total de DisplayWindowSettings   |
 |                   |                                   |   e roteamento de topologia de displays.    |
 +-------------------+-----------------------------------+---------------------------------------------+
-| Fabricante (OEM)  | Framework overlay / ROM vendor    | - Pode desativar livremente o suporte a     |
-|                   |                                   |   displays secundários, restringir HID      |
-|                   |                                   |   kernel e substituir o SystemUI launcher.  |
+| Fabricante (OEM)  | Framework overlay / ROM vendor    | - Pode customizar ou desativar suporte a    |
+|                   |                                   |   displays secundários, permissões do nó    |
+|                   |                                   |   /dev/uhid e launcher de SystemUI.         |
 +-------------------+-----------------------------------+---------------------------------------------+
 ```
 
 ### 3.3 Regras Críticas de Lançamento de Atividades (Activity Launch Policy)
 1. **Destino Padrão:** Por padrão, novas atividades iniciam no mesmo display do chamador (`caller context`).
 2. **Lançamento Direcionado:** O chamador pode especificar `ActivityOptions.setLaunchDisplayId(int displayId)` ao disparar um `Intent`.
-3. **Restrições de Segurança (Android 10+ / AOSP):**
+3. **Restrições de Segurança (AOSP):**
    - Para evitar que aplicativos maliciosos leiam dados sensíveis desenhados em superfícies virtuais arbitrárias, o AOSP restringe o lançamento em displays virtuais não pertencentes ao chamador.
-   - Chamadores precisam da permissão `ACTIVITY_EMBEDDING` e a atividade alvo precisa declarar `android:allowEmbedded="true"`, **a menos** que a tela seja de posse do sistema ou criada com a flag `VIRTUAL_DISPLAY_FLAG_TRUSTED` por uma entidade privilegiada.
+   - Chamadores precisam da permissão `ACTIVITY_EMBEDDING` e a atividade alvo precisa declarar `android:allowEmbedded="true"`, **a menos** que a tela seja de posse do sistema ou criada com a flag `VIRTUAL_DISPLAY_FLAG_TRUSTED` por uma entidade autorizada.
    - Verificação interna do AOSP realizada via `ActivityStackSupervisor#isCallerAllowedToLaunchOnDisplay()` e `ActivityManager#isActivityStartAllowedOnDisplay()`.
 
 ### 3.4 Decorações e Entrada (System Decorations & Input Routing)
 - **Decorações do Sistema:** Controladas por `DisplayWindowSettings` (persistido em `/data/system/display_settings.xml`). Define se o display secundário renderiza barra de navegação, papel de parede e IME (`shouldShowSystemDecors="true"`, `shouldShowIme="true"`).
-- **Roteamento de Entrada (Android 10+):** A associação estática entre portas de dispositivos físicos e displays é realizada via `/vendor/etc/input-port-associations.xml`. Dispositivos dinâmicos (como touch virtual via scrcpy) necessitam de mapeamento no `InputManagerService`.
+- **Roteamento de Entrada (Android 10+):** A associação estática entre portas de dispositivos físicos e displays é realizada via `/vendor/etc/input-port-associations.xml`. Dispositivos dinâmicos virtuais necessitam de mapeamento no `InputManagerService`.
 
 ---
 
@@ -126,7 +126,7 @@ Para evitar ambiguidades decorrentes de branches mutáveis (`master`), este rela
 
 - **Versão:** `v5.0.1`
 - **Tag:** `v5.0.1` (`refs/tags/v5.0.1` SHA: `a0c27ff382c411af1301dcc1cd8205c9aeb81996`)
-- **Commit:** `a60891aea193d92e7e5c3942700eca63f9d19a5f` (Data: 2025/2026)
+- **Commit:** `a60891aea193d92e7e5c3942700eca63f9d19a5f`
 - **Histórico Relevante:** O suporte formal a Virtual Displays foi introduzido no **scrcpy v3.0** (Issue #5370, PR #5506) e refinado nas versões 4.x e 5.0.
 
 ### 4.1 Mecanismo de Virtual Display no scrcpy (`--new-display`)
@@ -134,22 +134,25 @@ O scrcpy não requer privilégios de `root` para criar displays virtuais; ele ex
 
 Conforme verificado em `server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java` e `server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayManager.java`:
 1. **Invocação:** O servidor instancia a classe oculta `android.hardware.display.DisplayManagerGlobal` via reflexão e chama `createNewVirtualDisplay(...)`.
-2. **Flags Utilizadas na Criação:**
-   - `VIRTUAL_DISPLAY_FLAG_PUBLIC` (1 << 0)
-   - `VIRTUAL_DISPLAY_FLAG_PRESENTATION` (1 << 1)
-   - `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY` (1 << 3)
-   - `VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH` (1 << 6)
-   - `VIRTUAL_DISPLAY_FLAG_ROTATES_WITH_CONTENT` (1 << 7)
-   - Condicional (`vdDestroyContent`): `VIRTUAL_DISPLAY_FLAG_DESTROY_CONTENT_ON_REMOVAL` (1 << 8)
-   - Condicional (`vdSystemDecorations`): `VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS` (1 << 9)
-   - No Android 13+ (API 33+):
-     - `VIRTUAL_DISPLAY_FLAG_TRUSTED` (1 << 10)
-     - `VIRTUAL_DISPLAY_FLAG_OWN_DISPLAY_GROUP` (1 << 11)
-     - `VIRTUAL_DISPLAY_FLAG_ALWAYS_UNLOCKED` (1 << 12)
-     - `VIRTUAL_DISPLAY_FLAG_TOUCH_FEEDBACK_DISABLED` (1 << 13)
-   - No Android 14+ (API 34+):
-     - `VIRTUAL_DISPLAY_FLAG_OWN_FOCUS` (1 << 14)
-     - `VIRTUAL_DISPLAY_FLAG_DEVICE_DISPLAY_GROUP` (1 << 15)
+2. **Flags Utilizadas na Criação (`NewDisplayCapture.java`):**
+   - Flags base:
+     - `VIRTUAL_DISPLAY_FLAG_PUBLIC` (1 << 0)
+     - `VIRTUAL_DISPLAY_FLAG_PRESENTATION` (1 << 1)
+     - `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY` (1 << 3)
+     - `VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH` (1 << 6)
+     - `VIRTUAL_DISPLAY_FLAG_ROTATES_WITH_CONTENT` (1 << 7)
+   - Flags condicionais de opções CLI:
+     - Se destruição de conteúdo ativada (padrão): `VIRTUAL_DISPLAY_FLAG_DESTROY_CONTENT_ON_REMOVAL` (1 << 8). Pode ser desabilitada com `--no-vd-destroy-content`.
+     - Se decorações de sistema ativadas (padrão): `VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS` (1 << 9). Pode ser desabilitada com `--no-vd-system-decorations`.
+   - Flags por versão do Android verificadas no código do servidor (`Build.VERSION.SDK_INT`):
+     - No Android 13+ (API 33+, `AndroidVersions.API_33_ANDROID_13`):
+       - `VIRTUAL_DISPLAY_FLAG_TRUSTED` (1 << 10)
+       - `VIRTUAL_DISPLAY_FLAG_OWN_DISPLAY_GROUP` (1 << 11)
+       - `VIRTUAL_DISPLAY_FLAG_ALWAYS_UNLOCKED` (1 << 12)
+       - `VIRTUAL_DISPLAY_FLAG_TOUCH_FEEDBACK_DISABLED` (1 << 13)
+     - No Android 14+ (API 34+, `AndroidVersions.API_34_ANDROID_14`):
+       - `VIRTUAL_DISPLAY_FLAG_OWN_FOCUS` (1 << 14)
+       - `VIRTUAL_DISPLAY_FLAG_DEVICE_DISPLAY_GROUP` (1 << 15)
 3. **Ciclo de Vida:** O display virtual criado pelo scrcpy é volátil e destruído na desconexão da sessão, exceto se configurado de forma diferente.
 
 ### 4.2 Lançamento de Aplicativos (`--start-app`)
@@ -157,7 +160,7 @@ Conforme verificado em `server/src/main/java/com/genymobile/scrcpy/video/NewDisp
 - O scrcpy inicia o app alvo (`--start-app=<package>`) direcionando a janela especificamente para o `displayId` recém-criado, utilizando APIs internas de ActivityManager via ADB Shell.
 
 ### 4.3 Mecanismos de Entrada (Mouse e Teclado)
-O scrcpy v5.0.1 suporta três modos de entrada, detalhados em `doc/control.md`, `doc/keyboard.md` e `doc/mouse.md`:
+O scrcpy v5.0.1 suporta três modos de entrada, detalhados em `doc/control.md`, `doc/keyboard.md`, `doc/mouse.md` e `server/.../control/UhidManager.java`:
 
 ```
 +--------------------+-----------------------+-------------------------+----------------------------------------------+
@@ -165,20 +168,21 @@ O scrcpy v5.0.1 suporta três modos de entrada, detalhados em `doc/control.md`, 
 +--------------------+-----------------------+-------------------------+----------------------------------------------+
 | SDK Input          | --keyboard=sdk        | USB Debugging ativo.    | Injeta MotionEvent/KeyEvent via IPC do       |
 | (Padrão)           | --mouse=sdk           | UID 2000 (Shell).       | InputManagerService.                         |
-|                    |                       |                         | * Falha no Xiaomi/HyperOS se a opção         |
-|                    |                       |                         |   "USB debugging (Security settings)"        |
-|                    |                       |                         |   estiver desativada (INJECT_EVENTS negado). |
+|                    |                       |                         | * Advertência scrcpy: em aparelhos Xiaomi,  |
+|                    |                       |                         |   pode falhar se "USB debugging (Security    |
+|                    |                       |                         |   settings)" estiver desativado no menu dev. |
 +--------------------+-----------------------+-------------------------+----------------------------------------------+
-| UHID               | --keyboard=uhid (-K)  | Acesso ao nó de kernel  | Emula dispositivo físico USB HID real        |
-| (Kernel HID)       | --mouse=uhid (-M)     | /dev/uhid pelo shell.   | através do módulo de kernel UHID.            |
-|                    |                       | Android 5.0+ (geralmente| * Suporta todos os caracteres de teclado e   |
-|                    |                       | estável em Android 9+). |   desativa teclado virtual na tela nativa.   |
-|                    |                       |                         | * Suporta captura de cursor de mouse.        |
+| UHID               | --keyboard=uhid (-K)  | Acesso de escrita ao    | Cria dispositivo virtual no subsistema HID   |
+| (Kernel HID)       | --mouse=uhid (-M)     | nó /dev/uhid pelo shell | do kernel Linux (/dev/uhid).                 |
+|                    |                       | (UID 2000).             | * Modo público alternativo; sujeito às       |
+|                    |                       |                         |   permissões e políticas de segurança da ROM.|
+|                    |                       |                         | * No scrcpy (UhidManager.java), faz          |
+|                    |                       |                         |   associação por porta em Android 15+.       |
 +--------------------+-----------------------+-------------------------+----------------------------------------------+
 | AOA (Android Open  | --keyboard=aoa        | Comunicação USB direta  | Emula acessório físico via protocolo USB     |
 | Accessory 2.0)     | --mouse=aoa           | (OTG / hardware USB).   | AOAv2 sem passar pelo daemon adbd.           |
-|                    |                       | Sem dependência do ADB. | * Funciona mesmo sem depuração USB ativada.  |
-|                    |                       |                         | * Não suporta rede (apenas conexão USB).     |
+|                    |                       | Sem dependência do ADB. | * Requer conexão física por cabo USB.        |
+|                    |                       |                         | * Incompatível com modo rede/TCP.            |
 +--------------------+-----------------------+-------------------------+----------------------------------------------+
 ```
 
@@ -191,33 +195,32 @@ A matriz a seguir mapeia cada mecanismo documentado no AOSP e no scrcpy v5.0.1, 
 > **Regra de Aceite Rigorosa:** Nenhuma funcionalidade é declarada como suportada pelo dispositivo alvo (Redmi Note 13 4G / HyperOS) sem teste físico observável. Todas as linhas referentes a comportamento específico em ROM de fabricante são classificadas como `UNKNOWN / UNTESTED`.
 
 ```
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Mecanismo         | Fonte Primária e Ref       | Versão Mínima   | Permissões Requeridas     | Hipótese Técnica Limivra              | Riscos e Restrições de ROM               | Prova Ausente         |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Display Mirroring | AOSP DisplayManager /      | API 21+         | Nenhuma além do shell ADB | Viável para fallback básico de        | Baixa flexibilidade; bloqueio de tela    | Teste observável de   |
-| (Default Display) | scrcpy v5.0.1 (Base)       | (Android 5.0+)  | (UID 2000)                | espelhamento da tela principal.       | primária desliga renderização.           | FPS e latência local. |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Virtual Display   | AOSP DisplayManagerGlobal/ | API 30+ (ideal  | Shell ADB (UID 2000) com  | Pode hospedar sessão Linux/Wayland ou | OEMs (especialmente Xiaomi/HyperOS)      | Teste físico sob      |
-| Secundário        | scrcpy NewDisplayCapture   | API 33+ para    | acesso a APIs reflexivas  | apps específicos em resolução nativa  | frequentemente customizam ou quebram o   | SPIKE-001 (Issue #9)  |
-| (--new-display)   | commit a60891a             | flags TRUSTED)  | ocultas de sistema.       | de monitor de desktop.                | DisplayManagerService; risco de tela     | com logcat e dumpsys. |
-|                   |                            |                 |                           |                                       | preta se launcher decor falhar.          |                       |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| System UI Decor   | AOSP DisplayWindowSettings | API 29+         | Modificação requer shell  | Exibir barra de tarefas ou launcher   | HyperOS comumente omite ou quebra        | UNKNOWN / UNTESTED    |
-| no Secundário     | scrcpy --vd-system-decors  | (Android 10+)   | ou flags de criação de VD | dedicado no display externo.          | launchers em telas secundárias virtuais  | na ROM HyperOS.       |
-|                   |                            |                 | com decors habilitadas.   |                                       | sem cabo físico conectado.               |                       |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Injeção SDK       | AOSP InputManager /        | API 21+         | INJECT_EVENTS             | Método padrão de interação com touch  | No HyperOS/MIUI, bloqueado por padrão;   | Verificação física da |
-| de Eventos        | scrcpy --mouse=sdk         |                 | (Concedido ao UID 2000    | e cliques básicos no host.            | exige aprovação manual em "Depuração USB | opção no menu de      |
-|                   |                            |                 | no AOSP base).            |                                       | (Configurações de segurança)" com SIM.   | desenvolvedor.        |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Injeção UHID      | Linux Kernel UHID /        | API 28+         | Acesso de escrita ao nó   | Permite teclado com layout de desktop | Algumas ROMs restringem permissões de    | UNKNOWN / UNTESTED:   |
-| (Kernel Device)   | scrcpy --keyboard=uhid     | (Ideal Android  | /dev/uhid pelo shell      | e cursor de mouse capturado sem       | SELinux no /dev/uhid para o UID do shell | verificar ls -l       |
-|                   | PR #2632 / commit a60891a  | 9+)             | (geralmente permitido).   | depender de INJECT_EVENTS do Android. | em dispositivos de linha de entrada.     | /dev/uhid via adb.    |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
-| Janelas Livres    | AOSP WindowManager         | API 24+         | Configuração global do    | Permitir que aplicações rodem em      | O suporte a Freeform é frequentemente    | UNKNOWN / UNTESTED:   |
-| (Freeform /       | enable_freeform_support    | (Android 7.0+)  | sistema ou flags de janela| janelas arbitrárias sobre o display   | desativado, substituído por "janelas     | testar se HyperOS     |
-| Floating Windows) |                            |                 | livre.                    | virtual sem tiling fixo.              | flutuantes" proprietárias da fabricante. | aceita freeform AOSP. |
-+-------------------+----------------------------+-----------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Mecanismo         | Fonte Primária e Ref       | Requisito / Versão    | Permissões Requeridas     | Hipótese Técnica Limivra              | Riscos e Restrições de ROM               | Prova Ausente         |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Display Mirroring | AOSP DisplayManager /      | API 21+ (AOSP 5.0+) / | Nenhuma além do shell ADB | Viável para fallback básico de        | Baixa flexibilidade; bloqueio de tela    | Teste observável de   |
+| (Default Display) | scrcpy v5.0.1 base         | scrcpy v1.0+          | (UID 2000)                | espelhamento da tela principal.       | primária pode suspender renderização.    | FPS e latência local. |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Virtual Display   | AOSP DisplayManagerGlobal/ | Recurso scrcpy v3.0+; | Shell ADB (UID 2000) com  | Pode hospedar apps Android dedicados  | Risco de a ROM customizar ou restringir  | Teste físico sob      |
+| Secundário        | scrcpy NewDisplayCapture   | flags TRUSTED exigem  | acesso a APIs reflexivas  | no display virtual, transmitindo      | o DisplayManagerService; risco de tela   | SPIKE-001 (Issue #9)  |
+| (--new-display)   | commit a60891a             | API 33+ no servidor   | ocultas de sistema.       | vídeo para exibição no host Linux.    | preta se launcher decor estiver ausente. | com dumpsys display.  |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Decorações de     | AOSP DisplayWindowSettings | AOSP 10+ (API 29+) /  | Modificação do sistema ou | Exibir barra de tarefas ou launcher   | ROMs OEM podem não instanciar interface  | UNKNOWN / UNTESTED    |
+| Sistema Secundárias| scrcpy cli.c / doc:       | scrcpy v3.0+          | flags de criação do VD    | de sistema no display virtual se      | gráfica em displays virtuais criados via | na ROM do aparelho.   |
+| (decor / no-decor)| --no-vd-system-decorations |                       | com decors habilitadas.   | decor estiver ativo.                  | shell sem monitor físico HDMI acoplado.  |                       |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Injeção SDK       | AOSP InputManager /        | API 21+ (AOSP)        | INJECT_EVENTS             | Método padrão de interação com touch  | Advertência documentada pelo scrcpy de   | Verificação visual da |
+| de Eventos        | scrcpy --mouse=sdk         |                       | (Disponível ao UID 2000   | e eventos básicos de entrada a partir | restrição em aparelhos Xiaomi (exigência | presença da opção no  |
+|                   |                            |                       | no AOSP base).            | de eventos capturados no host Linux.  | de autorização de segurança).            | menu de desenvolvedor.|
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Injeção UHID      | Linux Kernel UHID /        | scrcpy v2.4+;         | Acesso de escrita ao nó   | Modo público alternativo para teclado | Permissões de SELinux ou nó /dev/uhid    | UNKNOWN / UNTESTED:   |
+| (Kernel Device)   | scrcpy --keyboard=uhid     | associação por porta  | /dev/uhid pelo shell      | físico e mouse capturado, sujeito às  | podem ser restritas para o shell UID     | verificar permissões  |
+|                   | UhidManager.java (v5.0.1)  | exige API 35+ no srv  | (UID 2000).               | políticas de segurança do sistema.    | 2000 em determinadas variantes de ROM.   | de /dev/uhid via adb. |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
+| Janelas Livres    | AOSP WindowManager         | API 24+ (AOSP 7.0+)   | Flag global do sistema ou | Permitir que aplicações Android rodem | Suporte a freeform AOSP pode estar       | UNKNOWN / UNTESTED:   |
+| (Freeform /       | enable_freeform_support    |                       | configuração de janela    | em janelas redimensionáveis sobre o   | inativo ou substituído por janelas       | verificar se a ROM    |
+| Floating Windows) |                            |                       | livre da ROM.             | display virtual.                      | flutuantes proprietárias da fabricante.  | expõe a feature.      |
++-------------------+----------------------------+-----------------------+---------------------------+---------------------------------------+------------------------------------------+-----------------------+
 ```
 
 ---
@@ -227,56 +230,61 @@ A matriz a seguir mapeia cada mecanismo documentado no AOSP e no scrcpy v5.0.1, 
 A governança do projeto Limivra exige a separação inequívoca das três esferas de conhecimento:
 
 1. **Documentação Oficial (O que o AOSP e o scrcpy descrevem):**
-   - O AOSP possui arquitetura documentada para displays múltiplos (`DEFAULT_DISPLAY` vs `secondary`), controle de lançamento (`ActivityOptions#setLaunchDisplayId`), roteamento de portas físicas (`/vendor/etc/input-port-associations.xml`) e decorações de sistema.
-   - O scrcpy v5.0.1 possui código testado publicamente para criar displays virtuais via `DisplayManagerGlobal` com suporte a redimensionamento dinâmico (`--flex-display`) e inicialização de processos em displays específicos (`--start-app`).
-   - O scrcpy documenta formalmente em seu README que dispositivos Xiaomi exigem autorização adicional para injeção via SDK ("USB debugging (Security Settings)").
+   - O AOSP possui arquitetura documentada para displays múltiplos (`DEFAULT_DISPLAY` vs `secondary`), controle de lançamento de atividades (`ActivityOptions#setLaunchDisplayId`), roteamento de portas físicas (`/vendor/etc/input-port-associations.xml`) e decorações de sistema (`DisplayWindowSettings`).
+   - O scrcpy v5.0.1 possui suporte documentado para criar displays virtuais via `DisplayManagerGlobal` (`--new-display`), desativar decorações (`--no-vd-system-decorations`), redimensionamento flexível (`--flex-display`) e inicialização de aplicativos Android direcionados (`--start-app`).
+   - O scrcpy documenta formalmente em seu README que dispositivos de determinados fabricantes (como Xiaomi) podem exigir autorização explícita adicional no menu de desenvolvedor para injeção via SDK ("USB debugging (Security Settings)").
+   - O scrcpy implementa injeção via kernel em `UhidManager.java`, abrindo `/dev/uhid` como processo do shell, associando a porta ao display via `InputManager` em Android 15+.
 
-2. **Hipótese Técnica do Limivra (O que o projeto projeta como possível):**
-   - É hipotetizado que o servidor do Limivra possa utilizar técnica análoga ao scrcpy (ou compor com componentes abertos do scrcpy) para disponibilizar um display virtual secundário sem requerer privilégios de `root`.
-   - É hipotetizado que uma sessão de desktop Wayland (ex.: compositor leve em container/chroot proot) possa emitir saída para o display virtual ou, alternativamente, servir de hospedeiro para tarefas Android isoladas.
-   - É hipotetizado que a entrada de teclado e mouse seja mais estável via UHID, contornando a restrição de injeção de eventos em ROMs restritivas.
+2. **Hipótese Técnica do Limivra (Conforme a Constituição do Sistema: Android executa apps → Linux exibe e controla):**
+   - É hipotetizado que tarefas e aplicativos **Android** possam rodar em um display virtual secundário sem interferir no display primário do dispositivo, sendo o vídeo transmitido e renderizado no host Linux.
+   - É hipotetizado que o host Linux capture eventos de mouse e teclado locais e os transmita para o servidor no Android, que os injetará via SDK ou UHID conforme o suporte e as permissões concedidas pela ROM.
+   - O UHID é avaliado estritamente como um **modo público alternativo documentado**, condicionado ao consentimento do usuário e às permissões de kernel da ROM, sem qualquer premissa de contornar ou evadir controles de segurança.
 
 3. **Observação Real em Hardware (O que foi efetivamente provado):**
    - **NADA.** Nenhum comando foi executado no dispositivo físico de referência sob esta issue.
    - Não há evidência observável de que a ROM HyperOS do aparelho aceite as flags `VIRTUAL_DISPLAY_FLAG_TRUSTED` sem redefinir o display para espelhamento forçado.
-   - Não há evidência observável de que o modo freeform esteja acessível sem quebra de compositor na ROM local.
+   - Não há evidência observável de que o nó `/dev/uhid` seja gravável pelo shell UID 2000 ou de que o modo freeform esteja acessível no aparelho sem teste físico.
 
 ---
 
 ## 7. Proposta de Experimentos Futuros (Subordinados à Issue #9 / SPIKE-001)
 
-Qualquer teste prático decorrente desta pesquisa só poderá ser executado sob autorização humana explícita, consentimento de depuração USB e escopo estrito da [Issue #9](https://github.com/pedro-labsabs/limivra/issues/9) e [docs/research/SPIKE-001.md](../../research/SPIKE-001.md).
+Qualquer teste prático decorrente desta pesquisa é uma **proposta futura potencialmente modificadora do estado da sessão** e só poderá ser executado sob autorização humana explícita, consentimento de depuração USB e escopo estrito da [Issue #9](https://github.com/pedro-labsabs/limivra/issues/9) e [docs/research/SPIKE-001.md](../../research/SPIKE-001.md).
 
 ### 7.1 Protocolo Experimental Sugerido (Apenas Proposta — Não Executado)
-1. **Teste 1 — Dumpsys Inicial e Permissões:**
+1. **Teste 1 — Dumpsys Inicial de Display:**
    - Comando planejado: `adb shell dumpsys display`
-   - Critério de observação: Verificar quais flags e displays secundários são reportados nativamente pela ROM em estado virgem.
-2. **Teste 2 — Validação de Nó UHID:**
+   - Critério de observação: Verificar quais flags, resoluções e displays secundários são reportados nativamente pela ROM em estado padrão.
+2. **Teste 2 — Verificação de Permissões do Nó UHID:**
    - Comando planejado: `adb shell ls -l /dev/uhid`
-   - Critério de observação: Verificar permissões de leitura/escrita do nó para o UID 2000 (shell).
-3. **Teste 3 — Teste Experimental de Display Virtual via scrcpy v5.0.1:**
-   - Comando planejado: `scrcpy --new-display=1280x720 --no-audio --dry-run` ou execução pontual com logcat.
-   - Critério de observação: Observar se o servidor scrcpy reporta sucesso na criação do display (`New display: 1280x720/DPI (id=X)`) ou se o `DisplayManagerGlobal` lança `SecurityException` ou trava na renderização de frames.
-4. **Teste 4 — Comportamento de Freeform na ROM:**
-   - Comando planejado: Inspecionar suporte a `freeform_window_management` via `adb shell dumpsys package features | grep freeform`.
-   - Critério de observação: Determinar se a fabricante removeu a feature do manifesto de sistema.
+   - Critério de observação: Inspecionar atributos de arquivo (leitura/escrita para UID 2000) sem tentar gravar no dispositivo.
+3. **Teste 3 — Verificação Controlada de Display Virtual via scrcpy v5.0.1:**
+   - Comando planejado: `scrcpy --new-display=1280x720 --no-audio` (execução interativa pontual com monitoramento de processo).
+   - *Critérios de interrupção (STOP) e teardown imediato:*
+     - Interromper imediatamente (`Ctrl+C` / SIGINT) se o dispositivo não responder, apresentar travamento de interface ou rejeição de permissão.
+     - Garantir o encerramento do processo local do scrcpy e verificar no dispositivo o teardown do display virtual (`adb shell dumpsys display | grep -i scrcpy`).
+     - Não solicitar nem armazenar dumps de `logcat` bruto; se logs forem necessários, limitar-se a mensagens de erro sanitizadas da tag `scrcpy`.
+4. **Teste 4 — Consulta de Feature de Janelas Livres (Freeform):**
+   - Comando planejado: Inspecionar via `adb shell pm list features | grep freeform`.
+   - Critério de observação: Verificar se a feature `android.software.freeform_window_management` está presente no sistema.
 
 ---
 
 ## 8. Conclusões, Riscos, Lacunas e Próximos Gates
 
 ### 8.1 Conclusões Documentais
-- A documentação pública do AOSP e o código-fonte estável do scrcpy v5.0.1 comprovam a viabilidade conceitual de criação de displays secundários virtuais sem `root` a partir do shell ADB em sistemas Android 10+.
-- No entanto, o sucesso dessa abordagem no ecossistema Android real é altamente dependente das modificações introduzidas por OEMs na camada de `system_server` e `WindowManager`.
+- A documentação pública do AOSP e o código-fonte estável do scrcpy v5.0.1 comprovam a viabilidade conceitual de criação de displays secundários virtuais a partir do shell ADB em sistemas Android com suporte de framework.
+- No entanto, a viabilidade real em dispositivos de mercado depende de como a ROM do fabricante implementa ou restringe as classes de `system_server`, permissões de nós de entrada e gerenciamento de janelas.
 
 ### 8.2 Principais Riscos Identificados
-- **Restrição de Injeção em ROMs Xiaomi/HyperOS:** Risco iminente de bloqueio de entrada se o usuário não conceder a permissão especial de segurança (que exige conta Mi e cartão SIM inserido em muitas versões da ROM).
-- **Incompatibilidade com Telas Virtuais sem Launcher:** Se a ROM não instanciar uma interface gráfica para telas secundárias, o display virtual fica vazio a menos que uma atividade específica seja mantida ativa.
-- **Divergência de Gerenciamento de Janelas:** Impossibilidade de janelas flutuantes AOSP caso a ROM imponha seu próprio framework de multitarefa proprietário.
+- **Possibilidade de Restrição de Entrada pelo Sistema:** Risco de o modo SDK ser bloqueado se a ROM exigir permissões adicionais concedidas pelo usuário nas opções de desenvolvedor.
+- **Comportamento de Display sem Decorações:** Se a ROM não instanciar uma interface gráfica para telas secundárias, o display virtual pode permanecer em branco até que um aplicativo Android seja explicitamente direcionado a ele.
+- **Substituição de Janelas Livres por Soluções Proprietárias:** A ROM pode desativar o gerenciador de janelas livres do AOSP em favor de sistemas próprios de multijanela.
 
-### 8.3 Próximos Gates
-1. **Gate SPIKE-001 (Issue #9):** Aguardar aprovação humana e conexão física do aparelho para executar a bateria mínima de inspeção de capacidades reais.
-2. **Gate de Arquitetura (Issue #14):** Avaliar se o Limivra adotará uma arquitetura baseada em display virtual compartilhado ou espelhamento controlado antes de qualquer especificação final em ADR.
+### 8.3 Próximos Gates Formais
+1. **Gate SPIKE-001 (Issue #9):** Prova física de viabilidade em hardware real, condicionada à autorização humana e conexão física do aparelho de teste.
+2. **Gate de Análise de Lacunas e REA (Issue #14):** Investigação aprofundada de eventuais restrições não resolvidas por documentação pública, formalmente dependente dos achados das Issues #9 e #13.
+3. **Gate de Decisão de Arquitetura e Design (Issue #8):** Autoridade soberana para decisões humanas de arquitetura e ratificação final de ADRs do sistema Limivra.
 
 ---
-*Relatório concluído em estrita conformidade com a política CAT-A/B, sem violação de integridade ou suposições de compatibilidade de hardware.*
+*Relatório reparado em estrita conformidade com a política CAT-A/B, sem violação de integridade ou suposições de compatibilidade de hardware.*
