@@ -56,7 +56,12 @@ Um erro conceitual frequente em projetos de integração Android-Linux é tratar
 ### 2.2 Virtual Display (Display Virtual Secundário)
 - **Definição técnica:** Instância de `android.view.Display` criada via `DisplayManager.createVirtualDisplay(...)` associada a uma `android.view.Surface` em memória, recebendo um `displayId` próprio (`displayId != DEFAULT_DISPLAY`).
 - **Comportamento no AOSP:** Opera como um display secundário lógico. Se criado com as flags e privilégios pertinentes pelo servidor (`VIRTUAL_DISPLAY_FLAG_PUBLIC`, `VIRTUAL_DISPLAY_FLAG_TRUSTED`, `VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY`), pode hospedar pilhas de atividades Android (`ActivityStack` / `Task`), permitindo que aplicativos Android rodem na resolução remota sem interferir no display físico primário.
-- **Relação com IME e Decorações:** O AOSP permite configurar decorações de sistema (barra de navegação, status bar, launcher dedicado) e política de teclado virtual (`DisplayWindowSettings#shouldShowSystemDecorsLocked`, `setDisplayImePolicy`).
+- **Relação com IME e Decorações:** O AOSP permite configurar decorações de sistema e políticas de entrada (`DisplayWindowSettings#setShouldShowSystemDecorsLocked`, `DisplayWindowSettings#setShouldShowImeLocked` / `setDisplayImePolicy`), mas a presença efetiva dos componentes visuais varia por elemento e versão:
+  - *Barra de Navegação:* Suportada em displays secundários configurados com decorações de sistema a partir do Android 10 (via `NavigationBarController` e affordances de *Back* e *Home*).
+  - *Status Bar:* **Não suportada em displays secundários no Android 10** (AOSP documenta expressamente que a status bar, por conter Notification Shade, Quick Settings e Lock Screen, permanece restrita ao display primário).
+  - *Launcher (Home):* Instanciado em displays secundários configurados com decorações caso exista atividade compatível com a categoria `android.intent.category.SECONDARY_HOME`; por segurança, launchers em displays virtuais só são renderizados em displays de posse do sistema.
+  - *IME (Teclado Virtual):* Configurado independentemente das demais decorações de sistema.
+  - *Habilitação de flag vs. Componentes Reais:* A ativação da flag de decorações (`VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS` ou configuração em `display_settings.xml`) sinaliza a intenção ao framework, mas não instancia automaticamente componentes inexistentes na ROM; componentes de System UI e launchers precisam existir e fornecer implementações aptas para o display secundário.
 
 ### 2.3 Desktop Windowing (Modo Desktop / Freeform)
 - **Definição técnica:** Modo de gerenciamento de janelas (`WINDOWING_MODE_FREEFORM`) em que as atividades Android são dispostas em retângulos redimensionáveis com barra de título e controles de janela, em vez do modo tela cheia (`WINDOWING_MODE_FULLSCREEN`) ou tela dividida (`WINDOWING_MODE_MULTI_WINDOW`).
@@ -70,10 +75,10 @@ A arquitetura de display e injeção do AOSP é estratificada em níveis rígido
 
 ### 3.1 Fontes Primárias AOSP Consultadas
 1. [AOSP Multi-Display Overview](https://source.android.com/docs/core/display/multi_display) (Atualizado para o ciclo trunk AOSP 2026).
-2. [AOSP Activity Launch Policy](https://source.android.com/docs/core/display/multi_display/activity-launch).
+2. [AOSP Activity Launch Policy](https://source.android.com/docs/core/display/multi_display/activity-launch) (Seções *Launch behavior*, *Security restrictions* e métodos `isCallerAllowedToLaunchOnDisplay` / `isActivityStartAllowedOnDisplay`).
 3. [AOSP Recommended Practices](https://source.android.com/docs/core/display/multi_display/recommended-practices).
 4. [AOSP Input Routing](https://source.android.com/docs/core/display/multi_display/input-routing).
-5. [AOSP System Decorations](https://source.android.com/docs/core/display/multi_display/system-decorations).
+5. [AOSP System Decorations](https://source.android.com/docs/core/display/multi_display/system-decorations) (Seções *System decorations*, *System UI decor windows*, *Launcher*, *Wallpapers*).
 
 ### 3.2 Estratificação de Permissões e Privilégios
 
@@ -107,12 +112,24 @@ A arquitetura de display e injeção do AOSP é estratificada em níveis rígido
 ```
 
 ### 3.3 Regras Críticas de Lançamento de Atividades (Activity Launch Policy)
-1. **Destino Padrão:** Por padrão, novas atividades iniciam no mesmo display do chamador (`caller context`).
-2. **Lançamento Direcionado:** O chamador pode especificar `ActivityOptions.setLaunchDisplayId(int displayId)` ao disparar um `Intent`.
-3. **Restrições de Segurança (AOSP):**
-   - Para evitar que aplicativos maliciosos leiam dados sensíveis desenhados em superfícies virtuais arbitrárias, o AOSP restringe o lançamento em displays virtuais não pertencentes ao chamador.
-   - Chamadores precisam da permissão `ACTIVITY_EMBEDDING` e a atividade alvo precisa declarar `android:allowEmbedded="true"`, **a menos** que a tela seja de posse do sistema ou criada com a flag `VIRTUAL_DISPLAY_FLAG_TRUSTED` por uma entidade autorizada.
-   - Verificação interna do AOSP realizada via `ActivityStackSupervisor#isCallerAllowedToLaunchOnDisplay()` e `ActivityManager#isActivityStartAllowedOnDisplay()`.
+Conforme a especificação oficial AOSP (*Activity launch policy*), o comportamento de lançamento em múltiplos displays é regido por modos de lançamento no `AndroidManifest.xml`, flags de `Intent` e opções de chamada via `ActivityOptions.setLaunchDisplayId(int displayId)`.
+
+1. **Destino Padrão e Resolução de Contexto:**
+   - Por padrão, uma atividade é iniciada no mesmo display do chamador (`caller context`).
+   - Se disparada de contexto desvinculado a um display específico (como contexto de `Application` ou shell ADB), a atividade é posicionada no display de topo com o qual o usuário interagiu por último ou de onde a última atividade foi iniciada.
+   - Quando um `Intent` resolve para uma instância de atividade pré-existente, ela ressurge no display onde esteve ativa por último, a menos que `ActivityOptions.setLaunchDisplayId(...)` direcione um novo display e as restrições de segurança permitam.
+
+2. **Regime de Permissões e Restrições de Segurança:**
+   Para evitar que aplicativos maliciosos capturem dados sensíveis do usuário lendo o framebuffer de um display virtual criado por eles, o AOSP impõe regras diferenciadas por classe de chamador, propriedade do display e atributos da atividade:
+   - **Atividades Próprias em Display Próprio:** Um aplicativo padrão pode iniciar **suas próprias atividades** em um display virtual de sua própria criação (Android 10+).
+   - **Atividades de Terceiros (`ACTIVITY_EMBEDDING`):** Um chamador só pode iniciar atividades de **outros aplicativos** em seu display se possuir a permissão `android.permission.ACTIVITY_EMBEDDING` **e** se a atividade de destino declarar explicitamente `android:allowEmbedded="true"` no seu manifesto (verificado em código via `ActivityInfo.FLAG_ALLOW_EMBEDDED`).
+   - **Componentes de Sistema (`INTERNAL_SYSTEM_WINDOW`):** Componentes de sistema detentores da permissão privilegiada `android.permission.INTERNAL_SYSTEM_WINDOW` podem iniciar atividades em qualquer display sem as restrições acima.
+   - **Displays Privados e Públicos:** Lançamentos em displays privados (`Display.FLAG_PRIVATE`) são estritamente restritos ao proprietário do display (`owner UID`) ou a atividades já presentes naquele display. Displays públicos aceitam atividades externas desde que atendidas as políticas de permissão do chamador e da atividade alvo.
+   - **Papel da Flag `VIRTUAL_DISPLAY_FLAG_TRUSTED`:** A flag `VIRTUAL_DISPLAY_FLAG_TRUSTED` (introduzida no Android 10 e exposta no AOSP/API 33+) confere ao display a propriedade de ser confiável pelo sistema para hospedar certos componentes protegidos (como decorações de sistema e restrições de toque), **mas não constitui uma isenção universal ou automática** que dispense as regras de `ACTIVITY_EMBEDDING` e `FLAG_ALLOW_EMBEDDED` para aplicativos de terceiros.
+   - **Diferenças Relevantes de Versão e Verificação Interna:**
+     - No Android 9 e inferiores, tentativas não autorizadas de lançamento em displays restritos resultavam em lançamento de `SecurityException`.
+     - No Android 10 (API 29+), o framework adicionou a checagem `ActivityManager.isActivityStartAllowedOnDisplay(Context context, int displayId, Intent intent)` para validação prévia de restrições de segurança antes da tentativa de lançamento.
+     - As checagens estruturais de autorização são centralizadas internamente no AOSP em `ActivityStackSupervisor#isCallerAllowedToLaunchOnDisplay()` e `ActivityTaskSupervisor`.
 
 ### 3.4 Decorações e Entrada (System Decorations & Input Routing)
 - **Decorações do Sistema:** Controladas por `DisplayWindowSettings` (persistido em `/data/system/display_settings.xml`). Define se o display secundário renderiza barra de navegação, papel de parede e IME (`shouldShowSystemDecors="true"`, `shouldShowIme="true"`).
