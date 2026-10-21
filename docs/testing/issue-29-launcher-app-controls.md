@@ -53,7 +53,7 @@ Gates finais sobre o código de entrega (todos realmente executados):
 | `cargo fmt --all -- --check` | exit 0 |
 | `git diff --check origin/main` (candidato antes do commit) | exit 0 |
 
-A verificação cumulativa `git diff --check origin/main...HEAD` será registrada após o commit, antes de publicar a branch.
+A verificação cumulativa `git diff --check origin/main...HEAD` foi executada após o commit de implementação `9a6bb12`: **exit 0**, sem erros. A mesma verificação será repetida no HEAD de publicação após este registro documental.
 
 ## Prova física observável
 
