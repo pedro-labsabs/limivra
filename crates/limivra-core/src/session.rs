@@ -1,6 +1,8 @@
 use crate::{fallback::FallbackReason, CoreError, DisplayMode, SessionState};
-use std::process::ExitStatus;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use tokio::process::Child;
 use tokio::sync::{broadcast, Mutex};
 use tracing::{info, warn};
@@ -22,6 +24,7 @@ pub struct SessionController {
     state: Arc<Mutex<SessionState>>,
     child_process: Arc<Mutex<Option<Child>>>,
     event_sender: broadcast::Sender<SessionEvent>,
+    generation: Arc<AtomicU64>,
 }
 
 impl SessionController {
@@ -32,6 +35,7 @@ impl SessionController {
             state: Arc::new(Mutex::new(SessionState::Disconnected)),
             child_process: Arc::new(Mutex::new(None)),
             event_sender: tx,
+            generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -68,6 +72,7 @@ impl SessionController {
             return Ok(());
         }
 
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         *state_guard = SessionState::Connecting;
         let _ = self
             .event_sender
@@ -75,7 +80,11 @@ impl SessionController {
 
         info!("Lançando processo de transporte: {} {:?}", command, args);
 
-        let child = match tokio::process::Command::new(command).args(args).spawn() {
+        let child = match tokio::process::Command::new(command)
+            .args(args)
+            .kill_on_drop(true)
+            .spawn()
+        {
             Ok(c) => c,
             Err(e) => {
                 let err_msg = format!("Falha ao iniciar processo '{command}': {e}");
@@ -105,26 +114,42 @@ impl SessionController {
         drop(child_guard);
         drop(state_guard);
 
-        // Monitora o término assíncrono do processo em background
+        // Keep the child in shared ownership: stop must be able to kill/reap it.
+        // Both paths lock state before child; generation prevents an old monitor
+        // from observing or terminating a replacement session.
         let state_clone = Arc::clone(&self.state);
         let child_clone = Arc::clone(&self.child_process);
         let event_tx = self.event_sender.clone();
-
+        let current_generation = self.generation.clone();
         tokio::spawn(async move {
-            let mut proc = {
-                let mut guard = child_clone.lock().await;
-                guard.take()
-            };
-
-            if let Some(ref mut child) = proc {
-                let status: Result<ExitStatus, std::io::Error> = child.wait().await;
-                let code = status.ok().and_then(|s| s.code());
-                info!("Processo filho encerrou com código de saída: {:?}", code);
-
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 let mut state = state_clone.lock().await;
-                *state = SessionState::Terminated;
-                let _ = event_tx.send(SessionEvent::ProcessExited(code));
-                let _ = event_tx.send(SessionEvent::StateChanged(SessionState::Terminated));
+                if current_generation.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let mut child = child_clone.lock().await;
+                let status = match child.as_mut() {
+                    Some(process) => process.try_wait(),
+                    None => return,
+                };
+                match status {
+                    Ok(None) => continue,
+                    result => {
+                        let code = result.ok().flatten().and_then(|s| s.code());
+                        // On wait failure still kill/reap our child before dropping.
+                        if let Some(mut process) = child.take() {
+                            if code.is_none() {
+                                let _ = process.kill().await;
+                                let _ = process.wait().await;
+                            }
+                        }
+                        *state = SessionState::Terminated;
+                        let _ = event_tx.send(SessionEvent::ProcessExited(code));
+                        let _ = event_tx.send(SessionEvent::StateChanged(SessionState::Terminated));
+                        return;
+                    }
+                }
             }
         });
 
@@ -133,6 +158,8 @@ impl SessionController {
 
     /// Encerra a sessão ativamente de forma segura, afetando apenas o processo filho de propriedade desta sessão.
     pub async fn stop(&self) -> Result<(), CoreError> {
+        let mut state_guard = self.state.lock().await;
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let mut child_guard = self.child_process.lock().await;
         if let Some(mut child) = child_guard.take() {
             info!("Enviando sinal de encerramento para o processo da sessão...");
@@ -141,7 +168,6 @@ impl SessionController {
             }
         }
 
-        let mut state_guard = self.state.lock().await;
         *state_guard = SessionState::Disconnected;
         let _ = self
             .event_sender

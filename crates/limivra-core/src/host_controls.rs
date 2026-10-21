@@ -3,6 +3,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlAction {
     Disconnect,
+    ReturnToSession,
     SwitchDisplay,
     ToggleVideoPause,
     ReloadVirtualDisplay,
@@ -63,6 +64,13 @@ pub struct HostControls {
 }
 
 impl HostControls {
+    pub fn request_app(
+        &self,
+        app: crate::launcher::AllowedApp,
+    ) -> Result<crate::launcher::AllowedApp, ControlError> {
+        self.request(ControlAction::ReloadVirtualDisplay)?;
+        Ok(app)
+    }
     pub fn connection(&self) -> ConnectionStatus {
         self.connection
     }

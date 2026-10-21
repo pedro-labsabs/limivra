@@ -1,5 +1,8 @@
+use crate::launcher::{
+    AllowedApp, LaunchContext, LaunchError, LaunchOutcome, LauncherReply, LauncherRequest,
+    LauncherRunner, ObservedDisplay, PackageName,
+};
 use crate::{
-    display::DisplayProber,
     fallback::{FallbackReason, FallbackRecord},
     scrcpy::{
         AppLaunchBackend, ScrcpyAdapter, ScrcpyCapabilities, ScrcpySessionOptions,
@@ -10,6 +13,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio::sync::{watch, Mutex};
 use tracing::{info, warn};
 
 /// Provedor e gerenciador de ciclo de vida de VirtualDisplay secundário para Android.
@@ -19,13 +23,205 @@ use tracing::{info, warn};
 /// com suporte a inicialização direcionada de aplicações Android e fallback gracioso.
 pub struct VirtualDisplayProvider {
     controller: Arc<SessionController>,
+    operation: Mutex<()>,
+    launch_context: Mutex<Option<LaunchContext>>,
+    launch_generation: watch::Sender<u64>,
 }
 
 impl VirtualDisplayProvider {
+    /// Start an app-neutral virtual session and bind only its uniquely new display.
+    /// Call launch_allowed_app separately after an explicit host selection.
+    pub async fn start_launcher_session<R: LauncherRunner>(
+        &self,
+        executable: &str,
+        serial: &str,
+        options: &ScrcpySessionOptions,
+        caps: &ScrcpyCapabilities,
+        runner: &R,
+    ) -> Result<(), LaunchError> {
+        let _operation = self.operation.lock().await;
+        if matches!(
+            self.current_state().await,
+            SessionState::Active { .. } | SessionState::Connecting
+        ) {
+            return Err(LaunchError::NotActive);
+        }
+        let config = options
+            .virtual_config
+            .as_ref()
+            .ok_or(LaunchError::DisplayDenied)?;
+        if config.app.is_some() || config.keep_content_on_destroy {
+            return Err(LaunchError::NotAllowed);
+        }
+        if !caps.supports_new_display {
+            return Err(LaunchError::DisplayDenied);
+        }
+        self.launch_generation
+            .send_modify(|n| *n = n.wrapping_add(1));
+        *self.launch_context.lock().await = None;
+        let mut generation = self.launch_generation.subscribe();
+        let epoch = *generation.borrow();
+        let before = observed_displays(runner, serial).await?;
+        let mode = DisplayMode::VirtualDisplay {
+            width: config.width,
+            height: config.height,
+            dpi: config.dpi,
+        };
+        let args = ScrcpyAdapter::build_arguments_advanced(serial, mode, caps, options)
+            .map_err(|_| LaunchError::CommandFailed)?;
+        let args_ref: Vec<_> = args.iter().map(String::as_str).collect();
+        // stop may have invalidated while the preflight was running.
+        if *generation.borrow() != epoch {
+            return Err(LaunchError::StaleContext);
+        }
+        self.controller
+            .start(executable, &args_ref, serial, mode)
+            .await
+            .map_err(|_| LaunchError::CommandFailed)?;
+        let mut events = self.subscribe();
+        let bind = async {
+            loop {
+                let after = observed_displays(runner, serial).await?;
+                let candidates: Vec<_> = after
+                    .iter()
+                    .filter(|d| {
+                        d.is_virtual && d.id != 0 && !before.iter().any(|old| old.id == d.id)
+                    })
+                    .collect();
+                match candidates.as_slice() {
+                    [display] => return Ok(display.id),
+                    [] => tokio::time::sleep(std::time::Duration::from_millis(250)).await,
+                    _ => return Err(LaunchError::DisplayDenied),
+                }
+            }
+        };
+        let result = tokio::select! {
+            biased;
+            _ = generation.changed() => Err(LaunchError::StaleContext),
+            _ = events.recv() => Err(LaunchError::StaleContext),
+            result = tokio::time::timeout(std::time::Duration::from_secs(5), bind) => result.unwrap_or(Err(LaunchError::Timeout)),
+        };
+        let same_generation = *generation.borrow() == epoch;
+        match result {
+            Ok(display_id)
+                if same_generation
+                    && self.current_state().await
+                        == (SessionState::Active {
+                            serial: serial.into(),
+                            mode,
+                        }) =>
+            {
+                *self.launch_context.lock().await = Some(LaunchContext {
+                    generation: epoch,
+                    target: serial.into(),
+                    display_id,
+                });
+                Ok(())
+            }
+            failure => {
+                self.launch_generation
+                    .send_modify(|n| *n = n.wrapping_add(1));
+                let _ = self.controller.stop().await;
+                Err(failure.err().unwrap_or(LaunchError::StaleContext))
+            }
+        }
+    }
+
+    /// Accepted means ActivityManager accepted the command, not proof of focus,
+    /// task placement or windowing support. The UI must report those separately.
+    pub async fn launch_allowed_app<R: LauncherRunner>(
+        &self,
+        app: AllowedApp,
+        runner: &R,
+    ) -> Result<LaunchOutcome, LaunchError> {
+        let _operation = self.operation.lock().await;
+        let context = self
+            .launch_context
+            .lock()
+            .await
+            .clone()
+            .ok_or(LaunchError::NotActive)?;
+        let mut generation = self.launch_generation.subscribe();
+        let mut events = self.subscribe();
+        self.check_launch_context(&context).await?;
+        let launch = async {
+            let mut component = None;
+            for package in app.packages() {
+                match runner
+                    .run(
+                        &context.target,
+                        LauncherRequest::Resolve {
+                            package: PackageName::parse(package)?,
+                        },
+                    )
+                    .await?
+                {
+                    LauncherReply::Resolved(found) if found.package() == *package => {
+                        component = Some(found);
+                        break;
+                    }
+                    LauncherReply::NotInstalled => continue,
+                    _ => return Err(LaunchError::UnexpectedReply),
+                }
+            }
+            let component = component.ok_or(LaunchError::ActivityNotFound)?;
+            self.check_launch_context(&context).await?;
+            let displays = observed_displays(runner, &context.target).await?;
+            if !displays
+                .iter()
+                .any(|d| d.id == context.display_id && d.is_virtual)
+            {
+                *self.launch_context.lock().await = None;
+                return Err(LaunchError::DisplayDenied);
+            }
+            self.check_launch_context(&context).await?;
+            match runner
+                .run(
+                    &context.target,
+                    LauncherRequest::Start {
+                        component,
+                        display_id: context.display_id,
+                    },
+                )
+                .await?
+            {
+                LauncherReply::Accepted => {
+                    self.check_launch_context(&context).await?;
+                    Ok(LaunchOutcome::Accepted {
+                        display_id: context.display_id,
+                    })
+                }
+                _ => Err(LaunchError::UnexpectedReply),
+            }
+        };
+        tokio::select! {
+            biased;
+            _ = generation.changed() => Err(LaunchError::StaleContext),
+            _ = events.recv() => Err(LaunchError::StaleContext),
+            result = launch => result,
+        }
+    }
+
+    async fn check_launch_context(&self, context: &LaunchContext) -> Result<(), LaunchError> {
+        if *self.launch_generation.borrow() != context.generation {
+            return Err(LaunchError::StaleContext);
+        }
+        match self.current_state().await {
+            SessionState::Active {
+                serial,
+                mode: DisplayMode::VirtualDisplay { .. },
+            } if serial == context.target => Ok(()),
+            _ => Err(LaunchError::StaleContext),
+        }
+    }
+
     /// Cria uma nova instância do provedor de display virtual.
     pub fn new() -> Self {
         Self {
             controller: Arc::new(SessionController::new()),
+            operation: Mutex::new(()),
+            launch_context: Mutex::new(None),
+            launch_generation: watch::channel(0).0,
         }
     }
 
@@ -37,87 +233,6 @@ impl VirtualDisplayProvider {
     /// Retorna o estado atual da sessão do display virtual.
     pub async fn current_state(&self) -> SessionState {
         self.controller.current_state().await
-    }
-
-    /// Constrói o comando `am start --display <id>` direcionado ao display virtual secundário.
-    pub fn build_am_start_command(serial: &str, app: &str, display_id: u32) -> Vec<String> {
-        let mut args = vec![
-            "-s".to_string(),
-            serial.to_string(),
-            "shell".to_string(),
-            "am".to_string(),
-            "start".to_string(),
-            "--display".to_string(),
-            display_id.to_string(),
-        ];
-
-        // Se o identificador contiver '/', é um componente explícito (ex: com.android.settings/.MainSettings)
-        if app.contains('/') {
-            args.push("-n".to_string());
-            args.push(app.to_string());
-        } else {
-            // Se for apenas o nome de pacote, lança via intent MAIN e categoria LAUNCHER
-            args.push("-a".to_string());
-            args.push("android.intent.action.MAIN".to_string());
-            args.push("-c".to_string());
-            args.push("android.intent.category.LAUNCHER".to_string());
-            args.push(app.to_string());
-        }
-
-        args
-    }
-
-    /// Executa o lançamento de aplicativo via ADB shell `am start --display <id>`.
-    pub async fn launch_app_via_am(
-        serial: &str,
-        app: &str,
-        display_id: u32,
-    ) -> Result<(), CoreError> {
-        let args = Self::build_am_start_command(serial, app, display_id);
-        info!(
-            "Executando am start no display virtual {}: {:?}",
-            display_id, args
-        );
-
-        let output = tokio::process::Command::new("adb")
-            .args(&args)
-            .output()
-            .await
-            .map_err(|e| CoreError::AdbError(format!("Falha ao invocar am start via ADB: {e}")))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CoreError::AdbError(format!(
-                "am start falhou com código {:?}: {}",
-                output.status.code(),
-                stderr
-            )));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("Error:") || stdout.contains("SecurityException") {
-            return Err(CoreError::AdbError(format!(
-                "Erro retornado pelo ActivityManager: {}",
-                stdout.trim()
-            )));
-        }
-
-        info!(
-            "Aplicativo '{}' lançado com sucesso no display {}.",
-            app, display_id
-        );
-        Ok(())
-    }
-
-    /// Sonda os displays ativos via dumpsys e localiza o identificador do display virtual recém-criado.
-    pub async fn find_virtual_display_id(serial: &str) -> Result<Option<u32>, CoreError> {
-        let displays = DisplayProber::probe_displays(serial).await?;
-        for d in displays {
-            if d.is_virtual || d.name.to_lowercase().contains("scrcpy") || d.id != 0 {
-                return Ok(Some(d.id));
-            }
-        }
-        Ok(None)
     }
 
     /// Inicia a sessão de display virtual com o binário scrcpy do sistema.
@@ -141,69 +256,56 @@ impl VirtualDisplayProvider {
         caps: &ScrcpyCapabilities,
         stay_awake: bool,
     ) -> Result<(), CoreError> {
+        if let Some(package) = &config.app {
+            let app = AllowedApp::from_package(package)
+                .ok_or_else(|| CoreError::AdbError(LaunchError::NotAllowed.to_string()))?;
+            if config.launch_backend == AppLaunchBackend::AdbAmStart {
+                let runner = crate::launcher::adb_runner::AdbLauncherRunner::system(serial)
+                    .map_err(|e| CoreError::AdbError(e.to_string()))?;
+                let mut neutral = config.clone();
+                neutral.app = None;
+                let options = ScrcpySessionOptions {
+                    stay_awake,
+                    virtual_config: Some(neutral),
+                };
+                self.start_launcher_session(executable, serial, &options, caps, &runner)
+                    .await
+                    .map_err(|e| CoreError::AdbError(e.to_string()))?;
+                self.launch_allowed_app(app, &runner)
+                    .await
+                    .map_err(|e| CoreError::AdbError(e.to_string()))?;
+                return Ok(());
+            }
+        }
+        let _operation = self.operation.lock().await;
+        if matches!(
+            self.current_state().await,
+            SessionState::Active { .. } | SessionState::Connecting
+        ) {
+            return Err(CoreError::AdbError("Session already active".into()));
+        }
+        self.launch_generation
+            .send_modify(|n| *n = n.wrapping_add(1));
+        *self.launch_context.lock().await = None;
         if !caps.supports_new_display {
             return Err(CoreError::ScrcpyError(
-                "O scrcpy instalado não suporta a criação de display virtual (--new-display)"
-                    .into(),
+                "O scrcpy instalado não suporta --new-display".into(),
             ));
         }
-
         let mode = DisplayMode::VirtualDisplay {
             width: config.width,
             height: config.height,
             dpi: config.dpi,
         };
-
         let options = ScrcpySessionOptions {
             stay_awake,
             virtual_config: Some(config.clone()),
         };
-
         let args = ScrcpyAdapter::build_arguments_advanced(serial, mode, caps, &options)?;
-        let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-        info!(
-            "Iniciando VirtualDisplayProvider para {} (resolução: {}x{} @ {} DPI)...",
-            serial, config.width, config.height, config.dpi
-        );
-
+        let args_ref: Vec<_> = args.iter().map(String::as_str).collect();
         self.controller
             .start(executable, &args_ref, serial, mode)
-            .await?;
-
-        // Se o backend for ADB am start e um app foi solicitado, dispara sondagem assíncrona para am start
-        if let Some(app) = &config.app {
-            if config.launch_backend == AppLaunchBackend::AdbAmStart {
-                let app_target = app.clone();
-                let serial_target = serial.to_string();
-
-                tokio::spawn(async move {
-                    info!("Aguardando registro do display virtual para am start...");
-                    for _ in 0..12 {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-                        match Self::find_virtual_display_id(&serial_target).await {
-                            Ok(Some(display_id)) => {
-                                info!(
-                                    "Display virtual {} localizado; invocando am start para '{}'",
-                                    display_id, app_target
-                                );
-                                if let Err(e) =
-                                    Self::launch_app_via_am(&serial_target, &app_target, display_id)
-                                        .await
-                                {
-                                    warn!("Falha ao lançar app via am start: {}", e);
-                                }
-                                return;
-                            }
-                            _ => continue,
-                        }
-                    }
-                    warn!("Tempo limite esgotado ao buscar ID do display virtual para am start.");
-                });
-            }
-        }
-
-        Ok(())
+            .await
     }
 
     /// Inicia uma sessão de display virtual com fallback defensivo automático e explícito para modo Mirror.
@@ -327,6 +429,11 @@ impl VirtualDisplayProvider {
         caps: &ScrcpyCapabilities,
         stay_awake: bool,
     ) -> Result<(), CoreError> {
+        self.launch_generation
+            .send_modify(|n| *n = n.wrapping_add(1));
+        let _operation = self.operation.lock().await;
+        *self.launch_context.lock().await = None;
+        self.controller.stop().await?;
         let args = ScrcpyAdapter::build_arguments_with_capabilities(
             serial,
             DisplayMode::Mirror,
@@ -343,6 +450,10 @@ impl VirtualDisplayProvider {
 
     /// Encerra a sessão do display virtual de forma limpa, garantindo teardown seguro e destruição do display.
     pub async fn stop(&self) -> Result<(), CoreError> {
+        self.launch_generation
+            .send_modify(|n| *n = n.wrapping_add(1));
+        let _operation = self.operation.lock().await;
+        *self.launch_context.lock().await = None;
         info!("Encerrando VirtualDisplayProvider e liberando recursos de tela...");
         self.controller.stop().await
     }
@@ -354,58 +465,20 @@ impl Default for VirtualDisplayProvider {
     }
 }
 
+async fn observed_displays<R: LauncherRunner>(
+    runner: &R,
+    target: &str,
+) -> Result<Vec<ObservedDisplay>, LaunchError> {
+    match runner.run(target, LauncherRequest::Displays).await? {
+        LauncherReply::Displays(displays) if !displays.is_empty() => Ok(displays),
+        _ => Err(LaunchError::UnexpectedReply),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scrcpy::CapabilityProbeSource;
-
-    #[test]
-    fn test_build_am_start_command_with_package() {
-        let cmd =
-            VirtualDisplayProvider::build_am_start_command("serial123", "com.android.settings", 2);
-
-        assert_eq!(
-            cmd,
-            vec![
-                "-s",
-                "serial123",
-                "shell",
-                "am",
-                "start",
-                "--display",
-                "2",
-                "-a",
-                "android.intent.action.MAIN",
-                "-c",
-                "android.intent.category.LAUNCHER",
-                "com.android.settings"
-            ]
-        );
-    }
-
-    #[test]
-    fn test_build_am_start_command_with_explicit_component() {
-        let cmd = VirtualDisplayProvider::build_am_start_command(
-            "serial123",
-            "com.android.settings/.MainSettings",
-            3,
-        );
-
-        assert_eq!(
-            cmd,
-            vec![
-                "-s",
-                "serial123",
-                "shell",
-                "am",
-                "start",
-                "--display",
-                "3",
-                "-n",
-                "com.android.settings/.MainSettings"
-            ]
-        );
-    }
 
     #[tokio::test]
     async fn test_provider_fails_fast_when_new_display_unsupported() {

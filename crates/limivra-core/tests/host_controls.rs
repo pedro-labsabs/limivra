@@ -213,3 +213,53 @@ async fn real_spawn_failure_keeps_projection_in_sync_with_controller() {
     );
     assert!(!format!("{controls:?}").contains("private-device-identifier"));
 }
+
+#[test]
+fn app_intents_require_active_virtual_and_return_is_local() {
+    use limivra_core::launcher::AllowedApp;
+    let mut controls = HostControls::default();
+    for state in [
+        SessionState::Disconnected,
+        SessionState::Connecting,
+        SessionState::Terminated,
+    ] {
+        controls.observe(&SessionEvent::StateChanged(state));
+        assert_eq!(
+            controls.request_app(AllowedApp::Settings),
+            Err(ControlError::NotActive)
+        );
+    }
+    activate(&mut controls, DisplayMode::Mirror);
+    assert_eq!(
+        controls.request_app(AllowedApp::Settings),
+        Err(ControlError::RequiresVirtualDisplay)
+    );
+    activate(&mut controls, VIRTUAL);
+    let before = controls.clone();
+    assert_eq!(
+        controls.request_app(AllowedApp::Calculator),
+        Ok(AllowedApp::Calculator)
+    );
+    assert_eq!(
+        controls.request(ControlAction::ReturnToSession),
+        Ok(ControlAction::ReturnToSession)
+    );
+    assert_eq!(before, controls);
+}
+
+#[tokio::test]
+async fn explicit_stop_stays_idempotent_after_monitor_runs() {
+    let session = limivra_core::SessionController::new();
+    session
+        .start("sleep", &["30"], "test-target", DisplayMode::Mirror)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    session.stop().await.unwrap();
+    // A late monitor must not change Disconnected back to Terminated.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(session.current_state().await, SessionState::Disconnected);
+    session.stop().await.unwrap();
+    assert_eq!(session.current_state().await, SessionState::Disconnected);
+    // The actual PID-reap regression is in launcher_runner.rs.
+}
