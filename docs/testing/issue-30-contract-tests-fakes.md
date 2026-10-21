@@ -77,10 +77,11 @@ Preencher somente com os resultados dos comandos executados nesta worktree.
 | Rust / Cargo | `rustc 1.88.0 (6b00bc388 2025-06-23)` / `cargo 1.88.0 (873a06493 2025-05-10)` |
 | `cargo test --workspace --locked --offline` | exit 0; 128 testes passaram |
 | Validação posterior à correção de isolamento | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 128 testes |
+| Validação final após ajustes de lint | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 128 testes |
 | Repetições herméticas pós-correção | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`, 10/10 rodadas exit 0; cada rodada executou 128 testes. Tabela abaixo. |
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
-| `git diff --check origin/main...HEAD` | A executar após o commit final |
+| `git diff --check origin/main...HEAD` | exit 0; nenhum erro de whitespace |
 
 Detalhe das dez repetições pós-correção:
 

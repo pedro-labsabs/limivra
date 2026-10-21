@@ -63,27 +63,27 @@
 - `Fixture::path(&self) -> &Path`, `Fixture::pid_file(&self, name: &str) -> PathBuf`, `Fixture::wait_for_pid(&self, name: &str, timeout: Duration) -> impl Future<Output = io::Result<u32>>` e `Fixture::assert_reaped(&self, pid: u32)` fornecem controle verificável do filho.
 - O fixture não exporta estado global nem usa nome de arquivo compartilhado; scripts/saídas recebem apenas valores sintéticos.
 
-- [ ] **Step 1: Criar o helper isolado de processos de teste**
+- [x] **Step 1: Criar o helper isolado de processos de teste**
 
 Implementar `tests/common/process.rs` com diretório exclusivo, fake executável, PID marker/readiness, espera limitada e verificação de reaping. Esta etapa é só suporte de teste; não muda código de produção e não envia sinais a processos que não tenham PID registrado pelo fixture.
 
-- [ ] **Step 2: Escrever regressões de saída inesperada e sinalização em `session.rs`**
+- [x] **Step 2: Escrever regressões de saída inesperada e sinalização em `session.rs`**
 
 Adicionar testes `session_child_exit_codes_are_reported_without_false_active_state` e `sigterm_terminated_child_reaches_terminated_state`. Usar filhos que encerram com código 1, 7 ou 127 e um fake que grava o próprio PID e se termina com SIGTERM via `kill` builtin do shell. Afirmar `ProcessExited(Some(code))` para códigos normais, `ProcessExited(None)` para término por sinal e `SessionState::Terminated` em todos os términos inesperados.
 
-- [ ] **Step 3: Executar os testes de caracterização antes de mudar produção**
+- [x] **Step 3: Executar os testes de caracterização antes de mudar produção**
 
 Executar `cargo test -p limivra-core --locked --offline --test session`. Os eventos de término podem já passar e, nesse caso, ficam registrados como contrato existente; falha de comportamento precisa ser reproduzível antes de qualquer correção, e falha de compilação/setup não conta como RED.
 
-- [ ] **Step 4: Implementar somente correções demonstradas**
+- [x] **Step 4: Implementar somente correções demonstradas**
 
 Adaptar fixtures locais repetidas apenas onde isso reduzir duplicação sem mudar semântica, e corrigir a menor fronteira de ciclo de vida necessária para estados/eventos e reaping serem coerentes. Não ampliar o escopo para um novo supervisor de processos.
 
-- [ ] **Step 5: Fixar SIGKILL, reaping e teardown idempotente do controlador**
+- [x] **Step 5: Fixar SIGKILL, reaping e teardown idempotente do controlador**
 
 Adicionar `session_stop_kills_and_reaps_only_its_child_and_is_idempotent`. Substituir em `host_controls.rs` as pausas fixas de `explicit_stop_stays_idempotent_after_monitor_runs` por PID marker e espera de `ProcessExited`. Afirmar que stop mata/recolhe o filho próprio, uma segunda chamada continua em `Disconnected` e um processo sentinela distinto continua vivo até o próprio teste encerrá-lo. Cobrir SIGKILL via stop e SIGTERM como término inesperado; nunca sinalizar PID fora do fixture. Os timeouts, overflow, cancelamento e reaping já cobertos por `launcher_runner.rs`/`wifi_runner.rs` serão mantidos e reexecutados, sem duplicar esses testes.
 
-- [ ] **Step 6: Verificar contratos focados**
+- [x] **Step 6: Verificar contratos focados**
 
 Executar `cargo test -p limivra-core --locked --offline --test session --test launcher_runner --test wifi_runner --test host_controls`. Esperado: todos passam; eventos de término permanecem ordenados e nenhum PID de fixture continua vivo após cleanup.
 
@@ -107,23 +107,23 @@ Executar `cargo test -p limivra-core --locked --offline --test session --test la
 - Adotar para probes genéricos ADB/dumpsys/scrcpy limite de 1 MiB por stream no executor do processo e limite de 16 KiB por linha estruturada. Manter os limites atuais de 16 KiB do launcher e 8192 bytes por stream do runner Wi-Fi.
 - Quando qualquer stream ultrapassar seu limite, a execução retorna erro explícito e não entrega prefixo como resposta válida; bytes UTF-8 inválidos são rejeitados no contrato estruturado, sem panic nem eco do conteúdo bruto.
 
-- [ ] **Step 1: Escrever testes de parser com entradas incompletas e corrompidas**
+- [x] **Step 1: Escrever testes de parser com entradas incompletas e corrompidas**
 
 Em `parsing_contracts.rs`, cobrir cabeçalhos duplicados, linhas vazias, status desconhecido, colunas ausentes, registro truncado, campos fora de ordem, `Rect`/display incompleto, versão scrcpy malformada e texto contendo `U+FFFD`. Afirmar que apenas registros completos conhecidos são retornados, status desconhecido nunca é `Device`, bounds incompletos não viram display e nenhuma entrada causa panic.
 
-- [ ] **Step 2: Escrever testes do executor, bytes inválidos, linha gigante e limite total**
+- [x] **Step 2: Escrever testes do executor, bytes inválidos, linha gigante e limite total**
 
 Criar `process.rs` com os tipos e assinatura documentados na seção Interfaces e adicionar `nonzero_exit_status_is_preserved`, `timeout_kills_and_reaps_child`, `oversized_stdout_or_stderr_kills_and_reaps_child` e `cancellation_kills_and_reaps_child`; o esqueleto inicial retorna erro sentinela em vez de implementar a execução. Em `launcher_runner.rs`/`wifi_runner.rs`, acrescentar `invalid_utf8_reply_fails_closed`. Em `parsing_contracts.rs`, acrescentar `oversized_structured_line_is_rejected`. Incluir byte `0xFF`, linha de 16 KiB + 1 byte, stream de 1 MiB + 1 byte e resposta truncada; verificar erro, ausência de resposta parcial confiável e ausência de eco de sentinela.
 
-- [ ] **Step 3: Rodar testes focados para confirmar RED comportamental**
+- [x] **Step 3: Rodar testes focados para confirmar RED comportamental**
 
 Executar `cargo test -p limivra-core --locked --offline process::tests` e `cargo test -p limivra-core --locked --offline --test parsing_contracts --test launcher_runner --test wifi_runner`. Esperado: falha nos comportamentos ainda sem limite/validação, sem falhas de setup.
 
-- [ ] **Step 4: Implementar parsing fail-closed e limites no ponto de leitura**
+- [x] **Step 4: Implementar parsing fail-closed e limites no ponto de leitura**
 
 Aplicar validação de linha antes de construir valores tipados; implementar `run_bounded` e usar seu timeout/limite nos probes genéricos, encerrando/recolhendo o subprocesso dono ao exceder cap ou ser cancelado. Rejeitar UTF-8 inválido nos formatos estruturados. Não usar `Command::output()` ilimitado para os caminhos exercitados. Preservar erros sem incorporar saídas potencialmente privadas.
 
-- [ ] **Step 5: Verificar a matriz de parsing**
+- [x] **Step 5: Verificar a matriz de parsing**
 
 Executar os comandos focalizados do Step 3. Esperado: entradas válidas preexistentes mantêm resultado idêntico; entradas malformadas/limites não causam panic, falso positivo ou prefixo aceito.
 
@@ -141,19 +141,19 @@ Executar os comandos focalizados do Step 3. Esperado: entradas válidas preexist
 - Fakes assíncronos de teste usam `tokio::sync::Barrier` ou `Notify` para pausar uma resposta exatamente no ponto da corrida; timeout serve apenas para evitar hang.
 - Manter contratos de generation/cancellation existentes: resultado de operação iniciada em geração antiga não altera estado, provider ou projeção da sessão corrente.
 
-- [ ] **Step 1: Fixar reconnect durante launch pendente em `launcher.rs`**
+- [x] **Step 1: Fixar reconnect durante launch pendente em `launcher.rs`**
 
 Estender `stop_cancels_pending_resolution_or_start_and_old_context_cannot_relaunch`: após o fake confirmar que a resolução antiga está pendente, parar a sessão e iniciar uma sessão nova antes de aguardar a operação antiga. Afirmar que a operação antiga retorna `StaleContext`, a nova sessão segue ativa e nenhuma chamada `Start` tardia usa o contexto anterior.
 
-- [ ] **Step 2: Manter os contratos existentes de concorrência Wi-Fi**
+- [x] **Step 2: Manter os contratos existentes de concorrência Wi-Fi**
 
 Manter como cobertura os testes existentes `busy_cancel_and_late_response_cannot_resurrect_connection`, `cancel_during_backoff_leaves_no_retry_pending` e `cancellation_during_each_client_operation_reaps_clients_and_server`. Adicionar `cancel_during_device_probe_cannot_restore_connected`, bloqueando `RequestKind::Probe` durante a confirmação de conexão e cancelando antes de liberar a resposta. Afirmar estado final `Disconnected`, nenhum evento tardio `Connected` e processo ADB do fake recolhido; não duplicar o cenário de cancelamento já coberto pelo runner.
 
-- [ ] **Step 3: Escrever `rapid_start_stop_cycles_reap_every_owned_child`**
+- [x] **Step 3: Escrever `rapid_start_stop_cycles_reap_every_owned_child`**
 
 Executar pelo menos 20 ciclos start/stop com filhos identificados por PID. Afirmar estado final `Disconnected`, ausência de PIDs dos filhos encerrados, ausência de evento tardio que reative sessão parada e preservação de processo sentinela não pertencente ao controlador.
 
-- [ ] **Step 4: Rodar testes focados, corrigir o menor defeito de corrida e repetir**
+- [x] **Step 4: Rodar testes focados, corrigir o menor defeito de corrida e repetir**
 
 Executar `cargo test -p limivra-core --locked --offline --test launcher --test wifi --test session --test host_controls`. Esperado: completam dentro do timeout do teste, sem `sleep` de sincronização e sem evento atrasado ressuscitar sessão anterior.
 
@@ -168,19 +168,19 @@ Executar `cargo test -p limivra-core --locked --offline --test launcher --test w
 - Cada caso prepara `PATH` contendo apenas `adb`/`scrcpy` fakes, `HOME` temporário e locale `C`; remover `ANDROID_SERIAL`, `ADB_SERVER_SOCKET`, `ADB_TRACE` e variáveis de chaves/servidor.
 - O fake escreve apenas fixture sintético; nenhum comando real `adb`/`scrcpy` deve ser encontrado ou usado.
 
-- [ ] **Step 1: Escrever testes CLI para execução fake, falha de ferramenta e saída hostil**
+- [x] **Step 1: Escrever testes CLI para execução fake, falha de ferramenta e saída hostil**
 
 Adicionar `devices_uses_only_fake_adb_and_redacts_serial_sentinel`, `doctor_handles_missing_and_nonzero_tools`, `invalid_utf8_or_oversized_adb_output_does_not_panic` e `probe_failure_has_bounded_non_sensitive_output`. Verificar código de saída/comportamento documentado, stdout/stderr, argumentos observados pelo fake, redaction do serial `LIMIVRA-TEST-SERIAL-XYZ` e que o fake prova a chamada sem consultar aparelho.
 
-- [ ] **Step 2: Rodar os testes focalizados em modo offline e observar RED**
+- [x] **Step 2: Rodar os testes focalizados em modo offline e observar RED**
 
 Executar `cargo test -p limivra-cli --locked --offline --test cli_process_contracts`. Esperado: falhas comportamentais se o CLI ou a descoberta ainda expuser saída ou tratar limites de forma incompleta; sem acesso a ferramenta instalada.
 
-- [ ] **Step 3: Aplicar correção mínima somente nas fronteiras observadas**
+- [x] **Step 3: Aplicar correção mínima somente nas fronteiras observadas**
 
 Manter a invocação por argumentos separados, preservar redaction existente, limitar/validar saída conforme Task 2 e evitar mensagem de diagnóstico contendo serial, argumento privado ou saída bruta.
 
-- [ ] **Step 4: Verificar os contratos CLI**
+- [x] **Step 4: Verificar os contratos CLI**
 
 Reexecutar `cargo test -p limivra-cli --locked --offline --test cli_process_contracts`. Esperado: todos os cenários passam com ambiente externo removido e apenas fakes locais.
 
@@ -190,19 +190,19 @@ Reexecutar `cargo test -p limivra-cli --locked --offline --test cli_process_cont
 - Create: `docs/testing/issue-30-contract-tests-fakes.md`
 - Modify: `docs/testing/strategy.md`
 
-- [ ] **Step 1: Registrar a estratégia e os limites da evidência**
+- [x] **Step 1: Registrar a estratégia e os limites da evidência**
 
 Documentar tabela `contrato | fake/fixture | comando de teste | resultado esperado`, os caps por stream/linha, mecanismos de sincronização, cleanup dos filhos, dependências locais para execução Linux, e asserção de que nenhum teste usa telefone, daemon ADB real ou rede externa. Reservar campos de resultado para os comandos efetivamente executados; não preencher com sucesso antecipado.
 
-- [ ] **Step 2: Executar a suíte workspace sem rede e repetição contra flakiness**
+- [x] **Step 2: Executar a suíte workspace sem rede e repetição contra flakiness**
 
 Executar `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` uma vez e, depois, repetir 10 vezes em sequência com o mesmo comando. Esperado: todas as execuções terminam com código 0, sem processo residual; registrar número de testes e código de saída de cada repetição. Qualquer falha intermitente impede concluir a issue até diagnóstico e correção.
 
-- [ ] **Step 3: Executar gates de qualidade e whitespace**
+- [x] **Step 3: Executar gates de qualidade e whitespace**
 
 Executar `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` e `git diff --check origin/main...HEAD`. Esperado: cada comando termina com código 0 e Clippy sem warnings.
 
-- [ ] **Step 4: Completar o relatório com os resultados reais**
+- [x] **Step 4: Completar o relatório com os resultados reais**
 
 Atualizar `docs/testing/issue-30-contract-tests-fakes.md` com versões do Rust/Cargo, comandos literais, códigos de saída, contagem de testes, resultados das 10 execuções, limites e exclusões. Marcar telefone/rede real como não usados, pois esta issue exige suíte hermética offline.
 
