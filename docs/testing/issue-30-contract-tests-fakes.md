@@ -99,7 +99,7 @@ Preencher somente com os resultados dos comandos executados nesta worktree.
 | Repetições herméticas após correções da revisão | Mesmo comando, 10/10 rodadas exit 0; cada rodada executou 134 testes. Tabela abaixo. |
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
-| `git diff --check origin/main...HEAD` | A executar após o commit de correção final |
+| `git diff --check origin/main...HEAD` | exit 0; nenhum erro de whitespace |
 
 Detalhe das dez repetições pós-correção:
 
