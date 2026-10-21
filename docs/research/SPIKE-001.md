@@ -1,64 +1,67 @@
 # SPIKE-001 — prova Android virtual display no Linux
 
-**Status:** NÃO EXECUTADO; versão da ROM e do scrcpy ainda desconhecidas. **Prioridade:** primeira atividade técnica. **Meta:** decidir se Redmi Note 13 4G com HyperOS pode exibir/controlar uma tela secundária Android sem root.
+**Status:** EXECUTADO COM SUCESSO (2026-10-21). **Meta:** decidir se Redmi Note 13 4G com HyperOS pode exibir/controlar uma tela secundária Android sem root.
 
 ## Pré-condições e consentimento
-- PC Linux próprio; celular próprio; cabo USB de dados; acesso local ao aparelho para aceitar pedido ADB.
+- PC Linux Ubuntu 24.04 LTS; Xiaomi Redmi Note 13 4G (`23129RA5FL`); cabo USB de dados; depuração USB autorizada.
 - Nenhum root, unlock, mudança permanente de sistema, scripts de inicialização, alteração em apps bancários ou permissões elevadas.
-- Usar comandos sem `sudo`; não gravar logcat, screenshots de conversas, nem serial IMEI ou tokens no repositório.
-- Validar flags pela versão: `scrcpy --help`, `scrcpy --version`.
+- Comandos sem `sudo`; identificadores e caminhos pessoais sanitizados.
+- scrcpy v5.0.1 (SDL 3.4.18 + VA-API) e ADB 1.0.41 (platform-tools 37.0.1).
 
 ## A — inventário e baseline
 ```bash
-command -v adb; adb version
-command -v scrcpy; scrcpy --version
-adb devices -l
-adb shell getprop ro.product.model
-adb shell getprop ro.build.version.release
-adb shell getprop ro.build.version.sdk
-adb shell getprop ro.build.version.incremental
+adb version # 1.0.41 / platform-tools 37.0.1
+scrcpy --version # scrcpy 5.0.1
+adb devices -l # 674d6cf9 device usb:1-4 product:sapphire_global model:23129RA5FL device:sapphire
+adb shell getprop ro.product.model # 23129RA5FL
+adb shell getprop ro.build.version.release # 15
+adb shell getprop ro.build.version.sdk # 35
+adb shell getprop ro.build.version.incremental # OS2.0.213.0.VNGMIXM
 ```
-Registre fabricante/modelo, Android/SDK, versão HyperOS (sem identificador único), kernel Linux, Wayland/X11, scrcpy, ADB, se aparecia "unauthorized" e resultado da autorização.
+- Fabricante/Modelo: Xiaomi / 23129RA5FL (Redmi Note 13 4G)
+- Sistema: Android 15 (SDK 35), HyperOS 2 (`OS2.0.213.0.VNGMIXM`)
+- Host: Linux kernel 7.0.0-30-generic, X11, Mesa 25.2.8 (OpenGL 4.6 + VA-API)
 
 ## B — controle do display físico
 ```bash
-scrcpy --no-audio
+scrcpy -s 674d6cf9 --no-audio
 ```
-Observar vídeo, clique, rolagem, digitação, encerramento via fechar janela. Se bloqueio Xiaomi de input, registrar sem habilitar opções de segurança automaticamente. Opcionalmente avaliar com o proprietário mudança reversível e documentada, mas não é requisito para continuar.
+- Vídeo estabelecido em 864x1920 acelerado por hardware via VA-API.
+- Encerramento limpo sem processos órfãos.
 
 ## C — segundo display
-**Após fechar a instância anterior:**
 ```bash
-scrcpy --new-display=1280x800 --start-app=com.android.settings --no-audio
+scrcpy -s 674d6cf9 --new-display=1280x720 --start-app=com.android.settings --no-audio
 ```
-Observar: (1) cria janela Linux? (2) o app Configurações aparece? (3) input funciona? (4) display físico segue independente? (5) display some ao encerrar? (6) que erro aparece quando falha? Não confundir tela preta por launcher ausente com ausência de suporte a display virtual; documentar logs de execução sanitizados.
+- Display virtual criado com sucesso pelo servidor (`[server] INFO: New display: 1280x720/234 (id=4)`).
+- Aplicativo Configurações iniciado na tela secundária (`Starting app "Configurações" on display 4`).
+- Tela física continuou independente.
+- Input via SDK bloqueado por restrição OEM Xiaomi (`INJECT_EVENTS` exige opção de desenvolvedor *"Depuração USB - Configurações de Segurança"*).
+- Input alternativo via UHID Kernel (`-K -M`) funciona sem restrição do SDK.
+- Resolução de 1920x1080 apresenta limite de MediaCodec no Snapdragon 685, tornando 1280x720 a resolução recomendada.
 
-**Não presumir** que o Android habilita freeform. Não usar `settings put`, mudanças de `wm`, root ou opções de desenvolvedor intrusivas neste spike.
-
-## D — multijanela (exploração opcional e separada)
-Com a sessão ativa, tentar abrir outro app autorizado pelo usuário e observar comportamento. Critério positivo: **duas janelas Android livres simultâneas, com redimensionamento verificável**, não mera alternância de apps.
+## D — multijanela (exploração de janelas livres)
+- O display virtual não disponibilizou gerenciador de janelas flutuantes/livres AOSP (`WINDOWING_MODE_FREEFORM`).
+- Não declarar suporte a freeform no produto.
 
 ## Resultado e classificação por modo
 | Prova | PASS / FAIL / BLOCKED / UNTESTED | Evidência |
 |---|---|---|
-| ADB autorizado | UNTESTED | |
-| Mirroring + input | UNTESTED | |
-| Display virtual criado | UNTESTED | |
-| App lançado no display virtual | UNTESTED | |
-| Input no display virtual | UNTESTED | |
-| Tela física independente | UNTESTED | |
-| Freeform real (opcional) | UNTESTED | |
+| ADB autorizado | PASS | `674d6cf9 device transport_id:1` |
+| Mirroring + input | PASS | `docs/testing/evidence/2026-10-21-usb-session-qa-evidence.md` |
+| Display virtual criado | PASS | `[server] INFO: New display: 1280x720/234 (id=4)` |
+| App lançado no display virtual | PASS | `Starting app "Configurações" on display 4` |
+| Input no display virtual | BLOCKED (SDK) / PASS (UHID) | SDK exige opção de segurança Xiaomi; UHID (`-K -M`) contorna |
+| Tela física independente | PASS | Tela integrada (id 0) segue operando sem espelhar |
+| Freeform real (opcional) | FAIL / UNPROVEN | Sem janelas livres observáveis na ROM HyperOS |
 
-Anotar comandos, versão, stdout/stderr sem dados privados, comportamento visual descrito, limitações e hipótese. Se virtual falhar, validar `MIRROR` como fallback viável, não exigir root. Testes físicos só podem ser marcados feitos com evidência real.
-
-## Gates
+## Gates atingidos
 - **PASS Nível 1:** baseline mirror+input funcional.
-- **PASS Nível 2:** display virtual + app e input, display físico independente.
-- **PASS Nível 3:** mais de uma janela livre observável.
-- **BLOCKED:** sem acesso/consentimento físico ou ferramentas essenciais indisponíveis.
-- **FAIL:** experimento tentado corretamente e funcionalidade negada; registrar causa, opções de fallback.
+- **PASS Nível 2 (Parcial):** display virtual + app e tela física independente funcional; input restrito no SDK por política da Xiaomi ou contornável via UHID.
+- **PASS Nível 3:** NÃO ATINGIDO (Freeform ausente).
+- **FALLBACK MIRROR:** Validado e implementado em `VirtualDisplayProvider`.
 
 ## Fontes oficiais
-https://github.com/Genymobile/scrcpy
-https://github.com/Genymobile/scrcpy/blob/master/doc/virtual_display.md
-https://source.android.com/docs/core/display/multi_display
+- https://github.com/Genymobile/scrcpy
+- https://github.com/Genymobile/scrcpy/blob/master/doc/virtual_display.md
+- https://source.android.com/docs/core/display/multi_display
