@@ -1,10 +1,10 @@
 # Evidência de QA — Prova de Virtual Display, Compatibilidade e Fallback (M2)
 
-**Data de Execução:** 2026-10-21  
-**Dispositivo Real Alvo:** Xiaomi Redmi Note 13 4G (`23129RA5FL`)  
-**Sistema Operacional:** Android 15 (API / SDK 35) — Xiaomi HyperOS 2 (`OS2.0.213.0.VNGMIXM`)  
-**Host de Teste:** Ubuntu 24.04 LTS (Noble) x86_64, Linux kernel `7.0.0-30-generic`, Servidor Gráfico X11 (`DISPLAY=:0`), Mesa 25.2.8 (OpenGL 4.6 + VA-API aceleração por hardware).  
-**Ferramentas e Binários:** ADB 1.0.41 (platform-tools 37.0.1), scrcpy v5.0.1 (SDL 3.4.18 + FFmpeg VA-API).  
+**Data de Execução:** 2026-10-21
+**Dispositivo Real Alvo:** Xiaomi Redmi Note 13 4G (`23129RA5FL`)
+**Sistema Operacional:** Android 15 (API / SDK 35) — Xiaomi HyperOS 2 (`OS2.0.213.0.VNGMIXM`)
+**Host de Teste:** Ubuntu 24.04 LTS (Noble) x86_64, Linux kernel `7.0.0-30-generic`, Servidor Gráfico X11 (`DISPLAY=:0`), Mesa 25.2.8 (OpenGL 4.6 + VA-API aceleração por hardware).
+**Ferramentas e Binários:** ADB 1.0.41 (platform-tools 37.0.1), scrcpy v5.0.1 (SDL 3.4.18 + FFmpeg VA-API).
 **Issue de Referência:** #24 (Milestone M2 — Virtual Display & Fallback)
 
 ---
@@ -71,7 +71,7 @@ scrcpy -s 674d6cf9 --new-display=1280x720 --start-app=com.android.settings --no-
 scrcpy 5.0.1 <https://github.com/Genymobile/scrcpy>
 INFO: ADB device found:
 INFO:     -->   (usb)  674d6cf9                        device  23129RA5FL
-/home/pedro/.local/usr/bin/scrcpy-server: 1 file pushed, 0 skipped. 577.5 MB/s (733930 bytes in 0.001s)
+scrcpy-server: 1 file pushed, 0 skipped. 577.5 MB/s (733930 bytes in 0.001s)
 [server] INFO: Device: [Xiaomi] Redmi 23129RA5FL (Android 15)
 INFO: Renderer: opengl
 INFO: OpenGL version: 4.6 (Compatibility Profile) Mesa 25.2.8-0ubuntu0.24.04.2

@@ -1,8 +1,8 @@
 # Evidência de QA — Prova Ponta a Ponta de Sessão USB no Linux
 
-**Data de Execução:** 2026-10-21  
-**Dispositivo Real Alvo:** Xiaomi Redmi Note 13 4G (`23129RA5FL`) — Android 15 (HyperOS)  
-**Host de Teste:** Ubuntu 24.04 LTS (Noble) x86_64, Linux kernel `7.0.0-30-generic`, Servidor Gráfico X11 (`DISPLAY=:0`), Mesa 25.2.8 (OpenGL 4.6 + VA-API aceleração por hardware).  
+**Data de Execução:** 2026-10-21
+**Dispositivo Real Alvo:** Xiaomi Redmi Note 13 4G (`23129RA5FL`) — Android 15 (HyperOS)
+**Host de Teste:** Ubuntu 24.04 LTS (Noble) x86_64, Linux kernel `7.0.0-30-generic`, Servidor Gráfico X11 (`DISPLAY=:0`), Mesa 25.2.8 (OpenGL 4.6 + VA-API aceleração por hardware).
 **Backends:** ADB 37.0.1 (Google platform-tools), scrcpy v5.0.1 (SDL3 + FFmpeg vaapi).
 
 ---
