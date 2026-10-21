@@ -307,12 +307,12 @@ async fn main() {
                     prov_clone.stop().await.ok();
                 });
 
-                println!("Inicializando VirtualDisplayProvider...");
+                println!("Inicializando VirtualDisplayProvider com política de fallback...");
                 if let Err(e) = provider
-                    .start(&device.serial, &config, &caps, stay_awake)
+                    .start_with_fallback(&device.serial, &config, &caps, stay_awake)
                     .await
                 {
-                    eprintln!("Erro ao iniciar display virtual: {e}");
+                    eprintln!("Erro ao iniciar sessão: {e}");
                     return;
                 }
 
@@ -320,6 +320,17 @@ async fn main() {
                     match event {
                         SessionEvent::StateChanged(s) => {
                             println!("Estado da Sessão: {s:?}");
+                        }
+                        SessionEvent::FallbackTriggered {
+                            reason,
+                            target_mode,
+                        } => {
+                            println!("\n[FALLBACK EXPLÍCITO VIRTUAL → {target_mode:?}]");
+                            println!("  • Causa: {}", reason.user_friendly_message());
+                            println!("  • Salvaguarda: Nenhuma janela flutuante/freeform é presumida sem prova observável.");
+                            println!(
+                                "  • A sessão de controle permanece ativa no modo de espelhamento."
+                            );
                         }
                         SessionEvent::ProcessExited(code) => {
                             println!("Sessão concluída (código de saída: {code:?})");
@@ -386,6 +397,7 @@ async fn run_mirror_session(
             SessionEvent::StateChanged(s) => {
                 println!("Estado da Sessão: {s:?}");
             }
+            SessionEvent::FallbackTriggered { .. } => {}
             SessionEvent::ProcessExited(code) => {
                 println!("Sessão concluída (código de saída: {code:?})");
                 break;

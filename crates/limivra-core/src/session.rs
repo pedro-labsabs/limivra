@@ -1,4 +1,4 @@
-use crate::{CoreError, DisplayMode, SessionState};
+use crate::{fallback::FallbackReason, CoreError, DisplayMode, SessionState};
 use std::process::ExitStatus;
 use std::sync::Arc;
 use tokio::process::Child;
@@ -10,6 +10,10 @@ use tracing::{info, warn};
 pub enum SessionEvent {
     StateChanged(SessionState),
     ProcessExited(Option<i32>),
+    FallbackTriggered {
+        reason: FallbackReason,
+        target_mode: DisplayMode,
+    },
     Error(String),
 }
 
@@ -39,6 +43,14 @@ impl SessionController {
     /// Retorna o estado atual da sessão.
     pub async fn current_state(&self) -> SessionState {
         self.state.lock().await.clone()
+    }
+
+    /// Emite um evento de fallback explícito para observadores da sessão.
+    pub fn notify_fallback(&self, reason: FallbackReason, target_mode: DisplayMode) {
+        let _ = self.event_sender.send(SessionEvent::FallbackTriggered {
+            reason,
+            target_mode,
+        });
     }
 
     /// Inicia uma sessão gerenciada lançando um subprocesso (ex: scrcpy ou comando mock em testes).

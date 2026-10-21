@@ -2,6 +2,7 @@
 
 pub mod adb;
 pub mod display;
+pub mod fallback;
 pub mod provider;
 pub mod scrcpy;
 pub mod session;
@@ -13,6 +14,7 @@ pub use adb::{AdbDevice, DeviceStatus};
 pub use display::{
     AndroidDisplayInfo, DeviceProfile, DisplayProbeReport, DisplayProber, VirtualDisplaySupport,
 };
+pub use fallback::{FallbackReason, FallbackRecord};
 pub use provider::VirtualDisplayProvider;
 pub use scrcpy::{
     AppLaunchBackend, CapabilityProbeSource, ScrcpyAdapter, ScrcpyCapabilities,
