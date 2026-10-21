@@ -405,10 +405,7 @@ impl DisplayProber {
             }
         };
 
-        info!(
-            "Sondagem de display concluída para {}: {:?}",
-            serial, support
-        );
+        log_probe_summary(serial, &support);
 
         Ok(DisplayProbeReport {
             device,
@@ -421,10 +418,67 @@ impl DisplayProber {
     }
 }
 
+fn log_probe_summary(_serial: &str, support: &VirtualDisplaySupport) {
+    info!(
+        "Sondagem de display concluída para dispositivo [REDACTED]: {:?}",
+        support
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scrcpy::CapabilityProbeSource;
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::fmt::MakeWriter;
+
+    #[derive(Clone, Default)]
+    struct LogBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> MakeWriter<'a> for LogBuffer {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    impl Write for LogBuffer {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| io::Error::other("log buffer poisoned"))?
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn display_probe_log_redacts_serial() {
+        const SERIAL: &str = "LIMIVRA-TEST-SERIAL-XYZ";
+        let captured = LogBuffer::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(captured.clone())
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            log_probe_summary(SERIAL, &VirtualDisplaySupport::Supported);
+        });
+
+        let output = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(
+            !output.contains(SERIAL),
+            "display probe log leaked the serial: {output}"
+        );
+        assert!(output.contains("[REDACTED]"));
+    }
 
     const SAMPLE_DUMPSYS_OUTPUT: &str = r#"
 DISPLAY MANAGER (dumpsys display)

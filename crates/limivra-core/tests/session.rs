@@ -45,6 +45,8 @@ async fn transport_log_redacts_serial_arguments() {
         SERIAL.to_owned(),
         "--serial".to_owned(),
         SERIAL.to_owned(),
+        format!("--serial={SERIAL}"),
+        format!("-s={SERIAL}"),
         "--window-title".to_owned(),
         format!("Limivra Desktop ({SERIAL})"),
     ];

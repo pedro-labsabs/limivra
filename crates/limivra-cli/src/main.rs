@@ -1,9 +1,10 @@
 //! Limivra CLI - Interface de linha de comando para controle e diagnóstico do Limivra.
 
 use clap::{Parser, Subcommand};
+use limivra_core::session::redact_transport_arguments;
 use limivra_core::{
     AppLaunchBackend, DeviceDiscovery, DeviceStatus, DisplayMode, DisplayProber, ScrcpyAdapter,
-    SessionController, SessionEvent, VirtualDisplayConfig, VirtualDisplayProvider,
+    SessionController, SessionEvent, SessionState, VirtualDisplayConfig, VirtualDisplayProvider,
     VirtualDisplaySupport,
 };
 use std::sync::Arc;
@@ -81,7 +82,10 @@ async fn main() {
                         DeviceStatus::Unknown => "[Desconhecido]",
                     };
                     let model_desc = d.model.as_deref().unwrap_or("Modelo desconhecido");
-                    println!("  • {} ({model_desc}) — {status_desc}", d.serial);
+                    println!(
+                        "  • {} ({model_desc}) — {status_desc}",
+                        redact_cli_serial(&d.serial)
+                    );
                 }
             }
             Err(e) => {
@@ -106,11 +110,14 @@ async fn main() {
                 }
             };
 
-            println!("Sondando dispositivo {}...", device.serial);
+            println!(
+                "Sondando dispositivo {}...",
+                redact_cli_serial(&device.serial)
+            );
             match DisplayProber::probe_device(&device.serial, &caps).await {
                 Ok(report) => {
                     println!("\n=== Relatório de Compatibilidade Limivra ===");
-                    println!("Dispositivo: {}", report.device.serial);
+                    println!("Dispositivo: {}", redact_cli_serial(&report.device.serial));
                     println!(
                         "  • Fabricante / Modelo: {} / {}",
                         report
@@ -247,7 +254,7 @@ async fn main() {
 
             println!(
                 "Dispositivo selecionado: {} ({})",
-                device.serial,
+                redact_cli_serial(&device.serial),
                 device.model.as_deref().unwrap_or("Modelo desconhecido")
             );
 
@@ -319,7 +326,7 @@ async fn main() {
                 while let Ok(event) = rx.recv().await {
                     match event {
                         SessionEvent::StateChanged(s) => {
-                            println!("Estado da Sessão: {s:?}");
+                            println!("Estado da Sessão: {}", format_session_state(&s));
                         }
                         SessionEvent::FallbackTriggered {
                             reason,
@@ -383,7 +390,10 @@ async fn run_mirror_session(
         ctrl_clone.stop().await.ok();
     });
 
-    println!("Inicializando sessão de espelhamento (Mirror) com argumentos: {args_ref:?}");
+    println!(
+        "Inicializando sessão de espelhamento (Mirror) com argumentos: {}",
+        format_transport_arguments_for_log(&args_ref, serial)
+    );
     if let Err(e) = controller
         .start("scrcpy", &args_ref, serial, DisplayMode::Mirror)
         .await
@@ -395,7 +405,7 @@ async fn run_mirror_session(
     while let Ok(event) = rx.recv().await {
         match event {
             SessionEvent::StateChanged(s) => {
-                println!("Estado da Sessão: {s:?}");
+                println!("Estado da Sessão: {}", format_session_state(&s));
             }
             SessionEvent::FallbackTriggered { .. } => {}
             SessionEvent::ProcessExited(code) => {
@@ -408,6 +418,21 @@ async fn run_mirror_session(
             }
         }
     }
+}
+
+fn redact_cli_serial(_serial: &str) -> &'static str {
+    "[REDACTED]"
+}
+
+fn format_session_state(state: &SessionState) -> String {
+    match state {
+        SessionState::Active { mode, .. } => format!("Active {{ mode: {mode:?} }}"),
+        other => format!("{other:?}"),
+    }
+}
+
+fn format_transport_arguments_for_log(args: &[&str], serial: &str) -> String {
+    format!("{:?}", redact_transport_arguments(args, serial))
 }
 
 fn check_tool(tool: &str) {
@@ -467,6 +492,37 @@ async fn check_scrcpy() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_session_output_redacts_serials() {
+        const SERIAL: &str = "LIMIVRA-TEST-SERIAL-XYZ";
+        let owned_args = [
+            "-s".to_owned(),
+            SERIAL.to_owned(),
+            format!("--serial={SERIAL}"),
+            "--window-title".to_owned(),
+            format!("Limivra Desktop ({SERIAL})"),
+        ];
+        let args = owned_args.iter().map(String::as_str).collect::<Vec<_>>();
+
+        let printed_args = format_transport_arguments_for_log(&args, SERIAL);
+        assert!(
+            !printed_args.contains(SERIAL),
+            "CLI argument output leaked the serial: {printed_args}"
+        );
+        assert!(printed_args.contains("[REDACTED]"));
+
+        let state = SessionState::Active {
+            serial: SERIAL.to_owned(),
+            mode: DisplayMode::Mirror,
+        };
+        let printed_state = format_session_state(&state);
+        assert!(
+            !printed_state.contains(SERIAL),
+            "CLI session state leaked the serial: {printed_state}"
+        );
+        assert!(!redact_cli_serial(SERIAL).contains(SERIAL));
+    }
 
     #[test]
     fn test_cli_parsing_doctor() {

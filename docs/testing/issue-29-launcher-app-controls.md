@@ -62,6 +62,13 @@ A verificação cumulativa `git diff --check origin/main...HEAD` foi executada a
 - Regressão em `crates/limivra-core/tests/session.rs`: subscriber de tracing captura o evento real produzido por `SessionController::start`; com sentinela `LIMIVRA-TEST-SERIAL-XYZ` em ambas as opções e no título, o teste exige `[REDACTED]` e comprova que a saída não contém o sentinela. O teste falhou antes da correção e passou depois.
 - Gates após a correção: `cargo test --workspace --locked --offline` — exit 0, 106 testes; `cargo fmt --all -- --check` — exit 0; `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` — exit 0, zero warnings; `git diff --check origin/main...HEAD` — exit 0 na validação cumulativa de publicação.
 
+### Reparo dos achados adicionais de privacidade
+
+- O CLI usa `session::redact_transport_arguments` antes de mostrar argv do scrcpy. Serial também é redigido nas saídas de seleção/sondagem de dispositivo, e a projeção do estado ativo omite o campo `serial`.
+- O log da sondagem de display substitui o identificador por `[REDACTED]`.
+- Testes com `LIMIVRA-TEST-SERIAL-XYZ` cobrem o evento real do logger de display, a saída de argumentos e estado do CLI, `-s <valor>`, `--serial <valor>`, `-s=<valor>`, `--serial=<valor>` e ocorrência embutida no título. Os testes de display e CLI falharam antes da correção e passaram depois.
+- Gates desta rodada: `cargo test --workspace --locked --offline` — exit 0, 108 testes; `cargo fmt --all -- --check` — exit 0; `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` — exit 0, zero warnings; `git diff --check origin/main...HEAD` — exit 0 após o commit final.
+
 ## Prova física observável
 
 Sequência de pedidos (serial substituído por `<alvo>`):

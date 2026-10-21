@@ -79,7 +79,7 @@ impl SessionController {
             .send(SessionEvent::StateChanged(SessionState::Connecting));
 
         let logged_command = redact_serial(command, serial);
-        let logged_args = redact_transport_args(args, serial);
+        let logged_args = redact_transport_arguments(args, serial);
         info!(
             "Lançando processo de transporte: {} {:?}",
             logged_command, logged_args
@@ -190,7 +190,10 @@ fn redact_serial(value: &str, serial: &str) -> String {
     }
 }
 
-fn redact_transport_args(args: &[&str], serial: &str) -> Vec<String> {
+/// Returns a log-safe copy of transport arguments with device serials redacted.
+/// The returned arguments are for display/logging only; callers must pass the
+/// original arguments to the transport process.
+pub fn redact_transport_arguments(args: &[&str], serial: &str) -> Vec<String> {
     let mut redacted = Vec::with_capacity(args.len());
     let mut redact_next = false;
 
