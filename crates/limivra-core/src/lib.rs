@@ -1,6 +1,7 @@
 //! Limivra Core - Núcleo de controle de sessão e gerenciamento de display Android.
 
 pub mod adb;
+pub mod display;
 pub mod scrcpy;
 pub mod session;
 
@@ -8,7 +9,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use adb::{AdbDevice, DeviceStatus};
-pub use scrcpy::{ScrcpyAdapter, ScrcpyVersion};
+pub use display::{
+    AndroidDisplayInfo, DeviceProfile, DisplayProbeReport, DisplayProber, VirtualDisplaySupport,
+};
+pub use scrcpy::{
+    CapabilityProbeSource, ScrcpyAdapter, ScrcpyCapabilities, ScrcpySessionOptions, ScrcpyVersion,
+    VirtualDisplayConfig,
+};
 pub use session::{SessionController, SessionEvent};
 
 /// Erros fundamentais do núcleo Limivra.
@@ -85,7 +92,8 @@ impl DeviceDiscovery {
                 .find(|d| d.serial == serial)
                 .ok_or(CoreError::NoDeviceFound)
         } else {
-            let ready_devices: Vec<AdbDevice> = devices.into_iter().filter(|d| d.is_ready()).collect();
+            let ready_devices: Vec<AdbDevice> =
+                devices.into_iter().filter(|d| d.is_ready()).collect();
             match ready_devices.len() {
                 0 => Err(CoreError::NoDeviceFound),
                 1 => Ok(ready_devices.into_iter().next().unwrap()),

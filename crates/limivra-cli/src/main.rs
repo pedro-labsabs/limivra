@@ -2,13 +2,16 @@
 
 use clap::{Parser, Subcommand};
 use limivra_core::{
-    DeviceDiscovery, DeviceStatus, DisplayMode, ScrcpyAdapter, SessionController, SessionEvent,
+    DeviceDiscovery, DeviceStatus, DisplayMode, DisplayProber, ScrcpyAdapter, SessionController,
+    SessionEvent, VirtualDisplaySupport,
 };
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "limivra")]
-#[command(about = "Acesse e controle dispositivos Android a partir do Linux como uma área de trabalho.")]
+#[command(
+    about = "Acesse e controle dispositivos Android a partir do Linux como uma área de trabalho."
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -19,6 +22,13 @@ struct Cli {
 enum Commands {
     /// Lista todos os dispositivos Android conectados via ADB e seus estados
     Devices,
+
+    /// Sonda displays ativos no dispositivo e avalia compatibilidade de VirtualDisplay
+    Probe {
+        /// Número de série do dispositivo Android (opcional se houver apenas um)
+        #[arg(short, long)]
+        serial: Option<String>,
+    },
 
     /// Inicia uma sessão de exibição
     Start {
@@ -35,7 +45,7 @@ enum Commands {
         stay_awake: bool,
     },
 
-    /// Verifica a disponibilidade das dependências no sistema host (ADB e scrcpy)
+    /// Verifica a disponibilidade e compatibilidade das ferramentas no sistema host
     Doctor,
 }
 
@@ -54,7 +64,9 @@ async fn main() {
                 for d in devices {
                     let status_desc = match d.status {
                         DeviceStatus::Device => "[Pronto / Autorizado]",
-                        DeviceStatus::Unauthorized => "[Não autorizado — confirme na tela do celular]",
+                        DeviceStatus::Unauthorized => {
+                            "[Não autorizado — confirme na tela do celular]"
+                        }
                         DeviceStatus::Offline => "[Offline]",
                         DeviceStatus::Recovery => "[Recovery/Sideload]",
                         DeviceStatus::Unknown => "[Desconhecido]",
@@ -64,9 +76,148 @@ async fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("Erro ao listar dispositivos ADB: {}", e);
+                eprintln!("Erro ao listar dispositivos ADB: {e}");
             }
         },
+        Commands::Probe { serial } => {
+            println!("Localizando dispositivo Android...");
+            let device = match DeviceDiscovery::resolve_target(serial.as_deref()).await {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("Falha na seleção do dispositivo: {e}");
+                    return;
+                }
+            };
+
+            let caps = match ScrcpyAdapter::detect_capabilities().await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Erro ao avaliar scrcpy: {e}");
+                    return;
+                }
+            };
+
+            println!("Sondando dispositivo {}...", device.serial);
+            match DisplayProber::probe_device(&device.serial, &caps).await {
+                Ok(report) => {
+                    println!("\n=== Relatório de Compatibilidade Limivra ===");
+                    println!("Dispositivo: {}", report.device.serial);
+                    println!(
+                        "  • Fabricante / Modelo: {} / {}",
+                        report
+                            .device
+                            .manufacturer
+                            .as_deref()
+                            .unwrap_or("Desconhecido"),
+                        report.device.model.as_deref().unwrap_or("Desconhecido")
+                    );
+                    println!(
+                        "  • Android: {} (SDK {})",
+                        report.device.release_version.as_deref().unwrap_or("?"),
+                        report
+                            .device
+                            .sdk_version
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "?".into())
+                    );
+                    if let Some(inc) = &report.device.incremental {
+                        println!("  • Build incremental: {inc}");
+                    }
+
+                    println!("\nDisplays detectados no Android (dumpsys):");
+                    if report.displays.is_empty() {
+                        println!("  (Nenhum display retornado via dumpsys)");
+                    } else {
+                        for d in &report.displays {
+                            let disp_type = if d.is_virtual {
+                                "Virtual/Secundário"
+                            } else if d.is_default {
+                                "Físico Principal (Default)"
+                            } else {
+                                "Secundário"
+                            };
+                            let fps = d
+                                .refresh_rate
+                                .map(|f| format!(" @ {f:.0} Hz"))
+                                .unwrap_or_default();
+                            println!(
+                                "  • ID {}: \"{}\" — {}x{} ({} DPI){}",
+                                d.id, d.name, d.width, d.height, d.dpi, fps
+                            );
+                            println!(
+                                "    Tipo: {} | Confiável (TRUSTED): {}",
+                                disp_type, d.is_trusted
+                            );
+                        }
+                    }
+
+                    println!("\nCapacidades scrcpy instaladas:");
+                    let ver_str = caps
+                        .version
+                        .as_ref()
+                        .map(|v| format!("v{}", v.raw))
+                        .unwrap_or_else(|| "Desconhecida".into());
+                    println!("  • Versão: {ver_str}");
+                    println!("  • Fonte de inspeção: {:?}", caps.probe_source);
+                    println!(
+                        "  • Flag --new-display: {}",
+                        if caps.supports_new_display {
+                            "Sim [OK]"
+                        } else {
+                            "Não [Indisponível]"
+                        }
+                    );
+                    println!(
+                        "  • Flag --start-app: {}",
+                        if caps.supports_start_app {
+                            "Sim [OK]"
+                        } else {
+                            "Não [Indisponível]"
+                        }
+                    );
+                    println!(
+                        "  • Flag --display-ime-policy: {}",
+                        if caps.supports_display_ime_policy {
+                            "Sim [OK]"
+                        } else {
+                            "Não [Indisponível]"
+                        }
+                    );
+                    println!(
+                        "  • Flag --no-vd-system-decorations: {}",
+                        if caps.supports_vd_system_decorations {
+                            "Sim [OK]"
+                        } else {
+                            "Não [Indisponível]"
+                        }
+                    );
+
+                    println!("\nResultado da Avaliação:");
+                    match &report.virtual_display_support {
+                        VirtualDisplaySupport::Supported => {
+                            println!("  [SUPORTADO] O ambiente atende aos requisitos documentados para VirtualDisplay.");
+                        }
+                        VirtualDisplaySupport::Unsupported { reason } => {
+                            println!("  [NÃO SUPORTADO] {reason}");
+                        }
+                        VirtualDisplaySupport::Unknown { reason } => {
+                            println!("  [UNKNOWN / REQUER PROVA] {reason}");
+                            println!(
+                                "  (Regra: UNKNOWN não vira suportado sem evidência empírica)"
+                            );
+                        }
+                    }
+
+                    println!("  • Modo recomendado: {:?}", report.recommended_mode);
+                    for diag in &report.diagnostics {
+                        println!("    -> {diag}");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Erro ao sondar displays: {e}");
+                }
+            }
+        }
         Commands::Start {
             serial,
             virtual_display,
@@ -76,7 +227,7 @@ async fn main() {
             let device = match DeviceDiscovery::resolve_target(serial.as_deref()).await {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("Falha na seleção do dispositivo: {}", e);
+                    eprintln!("Falha na seleção do dispositivo: {e}");
                     return;
                 }
             };
@@ -87,32 +238,54 @@ async fn main() {
                 device.model.as_deref().unwrap_or("Modelo desconhecido")
             );
 
-            let scrcpy_version = match ScrcpyAdapter::detect_version().await {
-                Ok(v) => v,
+            let caps = match ScrcpyAdapter::detect_capabilities().await {
+                Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Erro de dependência: {}", e);
+                    eprintln!("Erro de dependência: {e}");
                     return;
                 }
             };
-            println!("scrcpy detectado: v{}", scrcpy_version.raw);
 
-            let mode = if virtual_display {
-                DisplayMode::VirtualDisplay {
-                    width: 1920,
-                    height: 1080,
-                    dpi: 240,
+            if let Some(v) = &caps.version {
+                println!(
+                    "scrcpy detectado: v{} (inspeção: {:?})",
+                    v.raw, caps.probe_source
+                );
+            }
+
+            let mut mode = if virtual_display {
+                if !caps.supports_new_display {
+                    println!("[AVISO] scrcpy instalado não suporta criação de display virtual (--new-display).");
+                    println!("[FALLBACK] Executando em modo espelhamento (Mirror).");
+                    DisplayMode::Mirror
+                } else {
+                    DisplayMode::VirtualDisplay {
+                        width: 1920,
+                        height: 1080,
+                        dpi: 240,
+                    }
                 }
             } else {
                 DisplayMode::Mirror
             };
 
-            let args = match ScrcpyAdapter::build_arguments(&device.serial, mode, &scrcpy_version, stay_awake) {
+            let args = match ScrcpyAdapter::build_arguments_with_capabilities(
+                &device.serial,
+                mode,
+                &caps,
+                stay_awake,
+            ) {
                 Ok(a) => a,
                 Err(e) => {
-                    eprintln!("Erro ao construir argumentos: {}", e);
+                    eprintln!("Erro ao construir argumentos: {e}");
                     return;
                 }
             };
+
+            // Se os argumentos gerados não contiverem --new-display por fallback interno, ajusta modo
+            if !args.iter().any(|a| a.starts_with("--new-display")) && mode != DisplayMode::Mirror {
+                mode = DisplayMode::Mirror;
+            }
 
             let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             let controller = Arc::new(SessionController::new());
@@ -121,27 +294,32 @@ async fn main() {
             let ctrl_clone = Arc::clone(&controller);
             tokio::spawn(async move {
                 tokio::signal::ctrl_c().await.ok();
-                println!("\nRecebido sinal de interrupção (Ctrl+C). Encerrando sessão de forma limpa...");
+                println!(
+                    "\nRecebido sinal de interrupção (Ctrl+C). Encerrando sessão de forma limpa..."
+                );
                 ctrl_clone.stop().await.ok();
             });
 
-            println!("Inicializando sessão de vídeo...");
-            if let Err(e) = controller.start("scrcpy", &args_ref, &device.serial, mode).await {
-                eprintln!("Erro ao iniciar sessão: {}", e);
+            println!("Inicializando sessão de vídeo com argumentos: {args_ref:?}");
+            if let Err(e) = controller
+                .start("scrcpy", &args_ref, &device.serial, mode)
+                .await
+            {
+                eprintln!("Erro ao iniciar sessão: {e}");
                 return;
             }
 
             while let Ok(event) = rx.recv().await {
                 match event {
                     SessionEvent::StateChanged(s) => {
-                        println!("Estado da Sessão: {:?}", s);
+                        println!("Estado da Sessão: {s:?}");
                     }
                     SessionEvent::ProcessExited(code) => {
-                        println!("Sessão concluída (código de saída: {:?})", code);
+                        println!("Sessão concluída (código de saída: {code:?})");
                         break;
                     }
                     SessionEvent::Error(err) => {
-                        eprintln!("Erro na sessão: {}", err);
+                        eprintln!("Erro na sessão: {err}");
                         break;
                     }
                 }
@@ -150,7 +328,7 @@ async fn main() {
         Commands::Doctor => {
             println!("Executando diagnóstico de ambiente Limivra...");
             check_tool("adb");
-            check_tool("scrcpy");
+            check_scrcpy().await;
         }
     }
 }
@@ -163,10 +341,92 @@ fn check_tool(tool: &str) {
                 .next()
                 .unwrap_or("")
                 .to_string();
-            println!("  [OK] {}: {}", tool, first_line);
+            println!("  [OK] {tool}: {first_line}");
         }
         _ => {
-            println!("  [FALHA] {}: não encontrado no PATH", tool);
+            println!("  [FALHA] {tool}: não encontrado no PATH");
+        }
+    }
+}
+
+async fn check_scrcpy() {
+    match ScrcpyAdapter::detect_capabilities().await {
+        Ok(caps) => {
+            let ver = caps
+                .version
+                .as_ref()
+                .map(|v| format!("v{}", v.raw))
+                .unwrap_or_else(|| "desconhecida".into());
+            println!("  [OK] scrcpy: {ver}");
+            println!("       • Fonte da prova: {:?}", caps.probe_source);
+            println!(
+                "       • Suporta --new-display: {}",
+                caps.supports_new_display
+            );
+            println!("       • Suporta --start-app: {}", caps.supports_start_app);
+            println!(
+                "       • Suporta decorações (--no-vd-system-decorations): {}",
+                caps.supports_vd_system_decorations
+            );
+            println!(
+                "       • Suporta política IME (--display-ime-policy): {}",
+                caps.supports_display_ime_policy
+            );
+            println!(
+                "       • Suporta --list-displays: {}",
+                caps.supports_list_displays
+            );
+            println!(
+                "       • Suporta --stay-awake: {}",
+                caps.supports_stay_awake
+            );
+        }
+        Err(e) => {
+            println!("  [FALHA] scrcpy: {e}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parsing_doctor() {
+        let cli = Cli::try_parse_from(["limivra", "doctor"]).expect("deve parsear doctor");
+        match cli.command {
+            Commands::Doctor => {}
+            _ => panic!("Esperado comando Doctor"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_probe() {
+        let cli = Cli::try_parse_from(["limivra", "probe", "--serial", "device123"])
+            .expect("deve parsear probe");
+        match cli.command {
+            Commands::Probe { serial } => {
+                assert_eq!(serial.as_deref(), Some("device123"));
+            }
+            _ => panic!("Esperado comando Probe"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_start_with_virtual_display() {
+        let cli = Cli::try_parse_from(["limivra", "start", "--virtual-display", "--stay-awake"])
+            .expect("deve parsear start");
+        match cli.command {
+            Commands::Start {
+                serial,
+                virtual_display,
+                stay_awake,
+            } => {
+                assert_eq!(serial, None);
+                assert!(virtual_display);
+                assert!(stay_awake);
+            }
+            _ => panic!("Esperado comando Start"),
         }
     }
 }

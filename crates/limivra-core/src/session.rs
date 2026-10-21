@@ -57,17 +57,16 @@ impl SessionController {
         }
 
         *state_guard = SessionState::Connecting;
-        let _ = self.event_sender.send(SessionEvent::StateChanged(SessionState::Connecting));
+        let _ = self
+            .event_sender
+            .send(SessionEvent::StateChanged(SessionState::Connecting));
 
         info!("Lançando processo de transporte: {} {:?}", command, args);
 
-        let child = match tokio::process::Command::new(command)
-            .args(args)
-            .spawn()
-        {
+        let child = match tokio::process::Command::new(command).args(args).spawn() {
             Ok(c) => c,
             Err(e) => {
-                let err_msg = format!("Falha ao iniciar processo '{}': {}", command, e);
+                let err_msg = format!("Falha ao iniciar processo '{command}': {e}");
                 *state_guard = SessionState::Disconnected;
                 let _ = self.event_sender.send(SessionEvent::Error(err_msg.clone()));
                 return Err(CoreError::DependencyMissing(err_msg));
@@ -79,7 +78,9 @@ impl SessionController {
             mode,
         };
         *state_guard = new_state.clone();
-        let _ = self.event_sender.send(SessionEvent::StateChanged(new_state));
+        let _ = self
+            .event_sender
+            .send(SessionEvent::StateChanged(new_state));
 
         // Armazena o handle do processo filho
         let mut child_guard = self.child_process.lock().await;
@@ -125,7 +126,9 @@ impl SessionController {
 
         let mut state_guard = self.state.lock().await;
         *state_guard = SessionState::Disconnected;
-        let _ = self.event_sender.send(SessionEvent::StateChanged(SessionState::Disconnected));
+        let _ = self
+            .event_sender
+            .send(SessionEvent::StateChanged(SessionState::Disconnected));
 
         Ok(())
     }
@@ -149,12 +152,7 @@ mod tests {
 
         // Inicia processo mock rápido (sleep 0.1)
         controller
-            .start(
-                "sleep",
-                &["0.1"],
-                "mock-serial",
-                DisplayMode::Mirror,
-            )
+            .start("sleep", &["0.1"], "mock-serial", DisplayMode::Mirror)
             .await
             .expect("deve iniciar");
 
@@ -163,7 +161,7 @@ mod tests {
                 assert_eq!(serial, "mock-serial");
                 assert_eq!(mode, DisplayMode::Mirror);
             }
-            other => panic!("Esperava estado Active, obteve: {:?}", other),
+            other => panic!("Esperava estado Active, obteve: {other:?}"),
         }
 
         // Aguarda término natural do processo filho
@@ -177,12 +175,7 @@ mod tests {
 
         // Inicia processo que duraria 10 segundos
         controller
-            .start(
-                "sleep",
-                &["10"],
-                "mock-serial",
-                DisplayMode::Mirror,
-            )
+            .start("sleep", &["10"], "mock-serial", DisplayMode::Mirror)
             .await
             .expect("deve iniciar");
 
