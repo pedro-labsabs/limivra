@@ -55,6 +55,13 @@ Gates finais sobre o código de entrega (todos realmente executados):
 
 A verificação cumulativa `git diff --check origin/main...HEAD` foi executada após o commit de implementação `9a6bb12`: **exit 0**, sem erros. A mesma verificação será repetida no HEAD de publicação após este registro documental.
 
+### Reparo do achado de privacidade da auditoria
+
+- Achado: o evento INFO de lançamento registrava `args` integralmente, incluindo os valores após `-s`/`--serial` e o serial embutido no título da janela.
+- Correção: o logger agora redige o valor após as duas formas de seleção do alvo, também trata `-s=<valor>`/`--serial=<valor>` e remove o serial de outras strings do comando/argumentos. Os argumentos originais enviados ao subprocesso não são modificados.
+- Regressão em `crates/limivra-core/tests/session.rs`: subscriber de tracing captura o evento real produzido por `SessionController::start`; com sentinela `LIMIVRA-TEST-SERIAL-XYZ` em ambas as opções e no título, o teste exige `[REDACTED]` e comprova que a saída não contém o sentinela. O teste falhou antes da correção e passou depois.
+- Gates após a correção: `cargo test --workspace --locked --offline` — exit 0, 106 testes; `cargo fmt --all -- --check` — exit 0; `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` — exit 0, zero warnings. `git diff --check origin/main...HEAD` será registrado após criar o commit desta atualização.
+
 ## Prova física observável
 
 Sequência de pedidos (serial substituído por `<alvo>`):

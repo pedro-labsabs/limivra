@@ -78,7 +78,12 @@ impl SessionController {
             .event_sender
             .send(SessionEvent::StateChanged(SessionState::Connecting));
 
-        info!("Lançando processo de transporte: {} {:?}", command, args);
+        let logged_command = redact_serial(command, serial);
+        let logged_args = redact_transport_args(args, serial);
+        info!(
+            "Lançando processo de transporte: {} {:?}",
+            logged_command, logged_args
+        );
 
         let child = match tokio::process::Command::new(command)
             .args(args)
@@ -175,6 +180,46 @@ impl SessionController {
 
         Ok(())
     }
+}
+
+fn redact_serial(value: &str, serial: &str) -> String {
+    if serial.is_empty() {
+        value.to_owned()
+    } else {
+        value.replace(serial, "[REDACTED]")
+    }
+}
+
+fn redact_transport_args(args: &[&str], serial: &str) -> Vec<String> {
+    let mut redacted = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+
+    for arg in args {
+        if redact_next {
+            redacted.push("[REDACTED]".to_owned());
+            redact_next = false;
+            continue;
+        }
+
+        if *arg == "-s" || *arg == "--serial" {
+            redacted.push((*arg).to_owned());
+            redact_next = true;
+        } else if let Some((flag, _)) = arg.split_once('=') {
+            if flag == "-s" || flag == "--serial" {
+                redacted.push(format!("{flag}=[REDACTED]"));
+            } else {
+                redacted.push(redact_serial(arg, serial));
+            }
+        } else {
+            redacted.push(redact_serial(arg, serial));
+        }
+    }
+
+    if redact_next {
+        redacted.push("[REDACTED]".to_owned());
+    }
+
+    redacted
 }
 
 impl Default for SessionController {
