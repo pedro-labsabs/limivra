@@ -8,6 +8,7 @@ pub mod input_policy;
 pub mod provider;
 pub mod scrcpy;
 pub mod session;
+pub mod wifi;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
