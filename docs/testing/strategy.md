@@ -5,7 +5,8 @@
 ## Pirâmide de testes
 - Unitários: parsing ADB, seleção 0/1/N aparelhos, estados UNKNOWN/BLOCKED, filtros de logs, mensagens de erro, transições e cleanup idempotente.
 - Integração: executáveis fake para ADB/scrcpy, stderr, exit codes, timeouts, version gating, concorrência e encerramento.
-- Contratos de processo: fakes isolados por teste, PID/readiness markers, limites de stdout/stderr, timeout, cancelamento, sinalização e verificação de reaping; não herdar `PATH`, `HOME` ou configuração ADB do operador quando o teste exerce a CLI.
+- Contratos de processo: fakes isolados por teste, PID/readiness markers, grupos Unix privados, limites de stdout/stderr, timeout, cancelamento, sinalização e verificação de reaping de filhos e descendentes; fixtures sinalizam o próprio fake em teardown de falha. Não herdar `PATH`, `HOME` ou configuração ADB do operador quando o teste exerce a CLI.
+- CLI `doctor`: sondar `adb --version` com timeout e limite de saída; distinguir ferramenta ausente, falha de leitura, timeout, saída excedida e exit não zero.
 - Parsing defensivo: ignorar registros incompletos, linhas estruturadas acima de 16 KiB e texto com caractere de substituição; rejeitar bytes UTF-8 inválidos. Probes genéricos limitam cada stream a 1 MiB e não aceitam prefixos como respostas completas.
 - Repetibilidade: comandos herméticos usam `--locked --offline`; a evidência da Issue #30 registra execuções consecutivas da suíte workspace antes de atribuir ausência de flakiness.
 - E2E físico: em Redmi Note 13 4G (e depois mais ROMs), execução de SPIKE-001 e reprodução de ações com observador humano.

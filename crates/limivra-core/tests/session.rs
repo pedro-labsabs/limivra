@@ -295,3 +295,36 @@ async fn rapid_start_stop_cycles_reap_every_owned_child() {
     sentinel.stop().await.unwrap();
     sentinel_fixture.assert_reaped(sentinel_pid);
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn dropping_common_fixture_terminates_child_before_pid_registration() {
+    let _fixture_lock = PROCESS_FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::new(
+        "printf '%s\\n' \"$$\" > \"$LIMIVRA_FIXTURE_ROOT/registered-child\"; exec /bin/sleep 30",
+    );
+    let mut child = std::process::Command::new(fixture.path())
+        .spawn()
+        .expect("start fixture-owned fake child");
+    let marker = fixture.pid_file("fixture-root-pid");
+    let pid = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(contents) = std::fs::read_to_string(&marker) {
+                if let Ok(pid) = contents.trim().parse::<u32>() {
+                    break pid;
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("fake child publishes its PID");
+
+    drop(fixture);
+    let _ = child.wait().expect("reap fixture child after teardown");
+
+    assert!(
+        !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+        "fixture child should be reaped during teardown"
+    );
+}

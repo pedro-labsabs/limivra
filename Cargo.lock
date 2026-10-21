@@ -170,6 +170,7 @@ name = "limivra-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "libc",
  "limivra-core",
  "tokio",
  "tracing",
@@ -180,6 +181,7 @@ dependencies = [
 name = "limivra-core"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "thiserror",

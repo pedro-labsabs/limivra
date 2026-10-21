@@ -6,7 +6,7 @@
 
 **Architecture:** Reutilizar os runners fakes existentes para ADB, scrcpy e transporte; completar os pontos de teste sem seam com executáveis falsos por caminho absoluto e variáveis de ambiente privadas do processo filho. Separar contratos de parsing, ciclo de vida de processos e invocação da CLI, usando marcadores de prontidão, barreiras/eventos e limites de tempo como sincronização. Saídas excessivas ou inválidas devem falhar de forma explícita e nunca produzir estado de sucesso parcial.
 
-**Tech Stack:** Rust workspace, Tokio, `std::process`, `tracing`, executáveis fakes locais e Cargo em modo `--locked --offline`; sem nova dependência prevista.
+**Tech Stack:** Rust workspace, Tokio, `std::process`, `tracing`, executáveis fakes locais e Cargo em modo `--locked --offline`; `libc` já presente no lockfile é usado para sinalizar grupos Unix próprios.
 
 **Spec:** Issue #30; `docs/testing/strategy.md`; `docs/architecture/system.md`; `docs/planning/roadmap.md`; `AGENTS.md`.
 
@@ -44,7 +44,7 @@
 - Criar `crates/limivra-core/tests/common/mod.rs` para expor `process.rs` e `crates/limivra-core/tests/common/process.rs` com utilitários mínimos para diretório temporário exclusivo, fake executável, PID/readiness marker, leitura de saída e asserção de reaping. Cada teste sinaliza apenas PIDs conhecidos que pertencem ao fixture.
 - Criar `crates/limivra-core/tests/parsing_contracts.rs`: contratos públicos de `adb::parse_adb_devices_output`, `DisplayProber::parse_dumpsys_display_output`, `DisplayProber::parse_scrcpy_list_displays_output` e `ScrcpyVersion::parse`.
 - Atualizar `crates/limivra-core/tests/session.rs`, `launcher_runner.rs`, `wifi_runner.rs`, `launcher.rs`, `wifi.rs` e `host_controls.rs`: comportamento de processo, cancelamento e corridas que pertencem aos contratos existentes.
-- Criar `crates/limivra-core/src/process.rs`: executor interno de probes com limite por stream, timeout, cancelamento, kill/reap e erro sem saída bruta.
+- Criar `crates/limivra-core/src/process.rs`: executor de probes com limite por stream, timeout, cancelamento, encerramento do grupo Unix e reaping do filho direto, com erro sem saída bruta; expor a API limitada usada pelo CLI.
 - Ajustar `crates/limivra-core/src/lib.rs`, `adb.rs`, `display.rs` e `scrcpy.rs` para usar o executor limitado nos probes genéricos, preservando assinaturas públicas quando possível.
 - Criar `crates/limivra-cli/tests/cli_process_contracts.rs`: executar `CARGO_BIN_EXE_limivra-cli` com `PATH`, `HOME` e diretório temporário isolados e executáveis fake.
 - Criar `docs/testing/issue-30-contract-tests-fakes.md`: matriz de contratos, fakes usados, comandos executados, resultados, dependências locais necessárias e limites do que a suíte não prova.
@@ -100,7 +100,7 @@ Executar `cargo test -p limivra-core --locked --offline --test session --test la
 - Modify: `crates/limivra-core/tests/wifi_runner.rs`
 
 **Interfaces:**
-- `pub(crate) async fn process::run_bounded(executable: &Path, args: &[OsString], timeout: Duration, per_stream_limit: usize) -> Result<std::process::Output, ProcessError>` limita stdout e stderr independentemente, mata/recolhe o filho em timeout/cancelamento/overflow e não guarda conteúdo no erro.
+- `process::run_bounded(executable: &Path, args: &[OsString], timeout: Duration, per_stream_limit: usize) -> Result<std::process::Output, ProcessError>` limita stdout e stderr independentemente, mata o grupo privado e recolhe o filho direto em timeout/cancelamento/overflow e não guarda conteúdo no erro. O CLI usa o mesmo contrato para `adb --version`.
 - `ProcessError` distingue `Spawn`, `Timeout`, `OutputLimit` e `Io`; preserva o `ExitStatus` de comandos que terminam normalmente, inclusive status não zero.
 - Usar `run_bounded` em `DeviceDiscovery::list_devices`, `DisplayProber::probe_device_profile`, `DisplayProber::probe_displays` e `ScrcpyAdapter::detect_version`/`detect_capabilities`.
 - Preservar os parsers tipados já públicos; parsers só aceitam registros completos e válidos e nunca promovem status desconhecido a autorizado.
@@ -170,7 +170,7 @@ Executar `cargo test -p limivra-core --locked --offline --test launcher --test w
 
 - [x] **Step 1: Escrever testes CLI para execução fake, falha de ferramenta e saída hostil**
 
-Adicionar `devices_uses_only_fake_adb_and_redacts_serial_sentinel`, `doctor_handles_missing_and_nonzero_tools`, `invalid_utf8_or_oversized_adb_output_does_not_panic` e `probe_failure_has_bounded_non_sensitive_output`. Verificar código de saída/comportamento documentado, stdout/stderr, argumentos observados pelo fake, redaction do serial `LIMIVRA-TEST-SERIAL-XYZ` e que o fake prova a chamada sem consultar aparelho.
+Adicionar `devices_uses_only_fake_adb_and_redacts_serial_sentinel`, `doctor_handles_missing_and_nonzero_tools`, `doctor_bounds_version_output`, `doctor_times_out_hanging_tool`, `invalid_utf8_or_oversized_adb_output_does_not_panic` e `probe_failure_has_bounded_non_sensitive_output`. Verificar código de saída/comportamento documentado, stdout/stderr, argumentos observados pelo fake, redaction do serial `LIMIVRA-TEST-SERIAL-XYZ` e que o fake prova a chamada sem consultar aparelho.
 
 - [x] **Step 2: Rodar os testes focalizados em modo offline e observar RED**
 

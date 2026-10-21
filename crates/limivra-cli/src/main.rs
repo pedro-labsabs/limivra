@@ -7,7 +7,7 @@ use limivra_core::{
     SessionController, SessionEvent, SessionState, VirtualDisplayConfig, VirtualDisplayProvider,
     VirtualDisplaySupport,
 };
-use std::sync::Arc;
+use std::{ffi::OsString, path::Path, sync::Arc, time::Duration};
 
 #[derive(Parser, Debug)]
 #[command(name = "limivra")]
@@ -355,7 +355,7 @@ async fn main() {
         }
         Commands::Doctor => {
             println!("Executando diagnóstico de ambiente Limivra...");
-            check_tool("adb");
+            check_tool("adb").await;
             check_scrcpy().await;
         }
     }
@@ -435,18 +435,43 @@ fn format_transport_arguments_for_log(args: &[&str], serial: &str) -> String {
     format!("{:?}", redact_transport_arguments(args, serial))
 }
 
-fn check_tool(tool: &str) {
-    match std::process::Command::new(tool).arg("--version").output() {
+async fn check_tool(tool: &str) {
+    let args = [OsString::from("--version")];
+    match limivra_core::process::run_bounded(
+        Path::new(tool),
+        &args,
+        Duration::from_secs(1),
+        16 * 1024,
+    )
+    .await
+    {
         Ok(output) if output.status.success() => {
             let first_line = String::from_utf8_lossy(&output.stdout)
                 .lines()
                 .next()
                 .unwrap_or("")
-                .to_string();
+                .chars()
+                .take(256)
+                .collect::<String>();
             println!("  [OK] {tool}: {first_line}");
         }
-        _ => {
+        Ok(output) => {
+            println!(
+                "  [FALHA] {tool}: terminou com código {:?}",
+                output.status.code()
+            );
+        }
+        Err(limivra_core::process::ProcessError::Spawn) => {
             println!("  [FALHA] {tool}: não encontrado no PATH");
+        }
+        Err(limivra_core::process::ProcessError::Timeout) => {
+            println!("  [FALHA] {tool}: tempo limite excedido");
+        }
+        Err(limivra_core::process::ProcessError::OutputLimit) => {
+            println!("  [FALHA] {tool}: saída excedeu o limite");
+        }
+        Err(limivra_core::process::ProcessError::Io) => {
+            println!("  [FALHA] {tool}: falha ao ler a resposta");
         }
     }
 }

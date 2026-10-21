@@ -10,7 +10,7 @@ use tokio::{
 };
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub(crate) enum ProcessError {
+pub enum ProcessError {
     #[error("subprocess spawn failed")]
     Spawn,
     #[error("subprocess timed out")]
@@ -21,28 +21,31 @@ pub(crate) enum ProcessError {
     Io,
 }
 
-pub(crate) async fn run_bounded(
+pub async fn run_bounded(
     executable: &Path,
     args: &[OsString],
     timeout: Duration,
     per_stream_limit: usize,
 ) -> Result<Output, ProcessError> {
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| ProcessError::Spawn)?;
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(|_| ProcessError::Spawn)?;
+    let mut process_group = ProcessGroupGuard::new(child.id());
 
     let stdout = child.stdout.take().ok_or(ProcessError::Io)?;
     let stderr = child.stderr.take().ok_or(ProcessError::Io)?;
     let streams = tokio::select! {
         biased;
         _ = tokio::time::sleep_until(deadline) => {
-            terminate_and_reap(&mut child).await;
+            terminate_and_reap(&mut child, &mut process_group).await;
             return Err(ProcessError::Timeout);
         }
         result = async {
@@ -56,7 +59,7 @@ pub(crate) async fn run_bounded(
     let (stdout, stderr) = match streams {
         Ok(streams) => streams,
         Err(error) => {
-            terminate_and_reap(&mut child).await;
+            terminate_and_reap(&mut child, &mut process_group).await;
             return Err(error);
         }
     };
@@ -64,17 +67,19 @@ pub(crate) async fn run_bounded(
     let status = tokio::select! {
         biased;
         _ = tokio::time::sleep_until(deadline) => {
-            terminate_and_reap(&mut child).await;
+            terminate_and_reap(&mut child, &mut process_group).await;
             return Err(ProcessError::Timeout);
         }
         result = child.wait() => match result {
             Ok(status) => status,
             Err(_) => {
-                terminate_and_reap(&mut child).await;
+                terminate_and_reap(&mut child, &mut process_group).await;
                 return Err(ProcessError::Io);
             }
         },
     };
+
+    process_group.disarm();
 
     Ok(Output {
         status,
@@ -106,9 +111,47 @@ async fn read_bounded<R: AsyncRead + Unpin>(
     }
 }
 
-async fn terminate_and_reap(child: &mut tokio::process::Child) {
+async fn terminate_and_reap(
+    child: &mut tokio::process::Child,
+    process_group: &mut ProcessGroupGuard,
+) {
+    process_group.terminate();
+    process_group.disarm();
     let _ = child.start_kill();
     let _ = child.wait().await;
+}
+
+struct ProcessGroupGuard {
+    id: Option<u32>,
+    armed: bool,
+}
+
+impl ProcessGroupGuard {
+    fn new(id: Option<u32>) -> Self {
+        Self { id, armed: true }
+    }
+
+    fn terminate(&self) {
+        #[cfg(unix)]
+        if self.armed {
+            if let Some(id) = self.id {
+                // SAFETY: run_bounded placed its child in a fresh process group led by this PID.
+                unsafe {
+                    libc::kill(-(id as libc::pid_t), libc::SIGKILL);
+                }
+            }
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ProcessGroupGuard {
+    fn drop(&mut self) {
+        self.terminate();
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -138,10 +181,10 @@ mod tests {
             ));
             fs::create_dir(&root).unwrap();
             fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
-            let marker = root.join("pid");
             let script = format!(
-                "set -eu\nprintf '%s\\n' \"$$\" > '{}'\n{}\n",
-                marker.display(),
+                "set -eu\nexport LIMIVRA_PROCESS_FIXTURE_ROOT='{}'\nprintf '%s\\n' \"$$\" > '{}/pid'\n{}\n",
+                root.display(),
+                root.display(),
                 body
             );
             Self {
@@ -152,9 +195,13 @@ mod tests {
         }
 
         async fn wait_for_pid(&self) -> u32 {
+            self.wait_for_named_pid("pid").await
+        }
+
+        async fn wait_for_named_pid(&self, name: &str) -> u32 {
             tokio::time::timeout(Duration::from_secs(3), async {
                 loop {
-                    if let Ok(value) = fs::read_to_string(self.root.join("pid")) {
+                    if let Ok(value) = fs::read_to_string(self.root.join(name)) {
                         if let Ok(pid) = value.trim().parse() {
                             return pid;
                         }
@@ -179,6 +226,16 @@ mod tests {
 
     impl Drop for Fixture {
         fn drop(&mut self) {
+            for name in ["pid", "descendant"] {
+                if let Ok(contents) = fs::read_to_string(self.root.join(name)) {
+                    if let Ok(pid) = contents.trim().parse::<libc::pid_t>() {
+                        // SAFETY: these private markers are written by this fixture's child processes.
+                        unsafe {
+                            libc::kill(pid, libc::SIGKILL);
+                        }
+                    }
+                }
+            }
             let _ = fs::remove_dir_all(&self.root);
         }
     }
@@ -208,6 +265,38 @@ mod tests {
         .await;
         assert_eq!(result.unwrap_err(), ProcessError::Timeout);
         fixture.assert_reaped(fixture.wait_for_pid().await).await;
+    }
+
+    #[tokio::test]
+    async fn timeout_kills_and_reaps_descendant_holding_pipe() {
+        let fixture = Fixture::new(
+            "(/bin/sleep 30) & printf '%s\\n' \"$!\" > \"$LIMIVRA_PROCESS_FIXTURE_ROOT/descendant\"; wait",
+        );
+        let executable = fixture.executable.clone();
+        let args = fixture.args.clone();
+        let task = tokio::spawn(async move {
+            run_bounded(&executable, &args, Duration::from_millis(500), 1024).await
+        });
+        let descendant = fixture.wait_for_named_pid("descendant").await;
+        assert_eq!(task.await.unwrap().unwrap_err(), ProcessError::Timeout);
+        fixture.assert_reaped(descendant).await;
+    }
+
+    #[tokio::test]
+    async fn output_limit_kills_and_reaps_descendant() {
+        let fixture = Fixture::new(
+            "(/bin/sleep 30) & printf '%s\\n' \"$!\" > \"$LIMIVRA_PROCESS_FIXTURE_ROOT/descendant\"; /usr/bin/head -c 1048577 /dev/zero; wait",
+        );
+        let result = run_bounded(
+            &fixture.executable,
+            &fixture.args,
+            Duration::from_secs(5),
+            1024 * 1024,
+        )
+        .await;
+        assert_eq!(result.unwrap_err(), ProcessError::OutputLimit);
+        let descendant = fixture.wait_for_named_pid("descendant").await;
+        fixture.assert_reaped(descendant).await;
     }
 
     #[tokio::test]
@@ -264,5 +353,21 @@ mod tests {
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         fixture.assert_reaped(pid).await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_kills_and_reaps_descendant() {
+        let fixture = Fixture::new(
+            "(/bin/sleep 30) & printf '%s\\n' \"$!\" > \"$LIMIVRA_PROCESS_FIXTURE_ROOT/descendant\"; wait",
+        );
+        let executable = fixture.executable.clone();
+        let args = fixture.args.clone();
+        let task = tokio::spawn(async move {
+            run_bounded(&executable, &args, Duration::from_secs(30), 1024).await
+        });
+        let descendant = fixture.wait_for_named_pid("descendant").await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        fixture.assert_reaped(descendant).await;
     }
 }

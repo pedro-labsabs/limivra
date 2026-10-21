@@ -4,7 +4,10 @@ use std::{
     fs, io,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::Duration,
 };
 
@@ -13,6 +16,8 @@ static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 pub struct Fixture {
     root: PathBuf,
     executable: PathBuf,
+    active_pids: Mutex<std::collections::HashSet<u32>>,
+    reaped_pids: Mutex<std::collections::HashSet<u32>>,
 }
 
 impl Fixture {
@@ -28,7 +33,8 @@ impl Fixture {
 
         let executable = root.join("fake-process");
         let script = format!(
-            "#!/bin/sh\nset -eu\nexport LIMIVRA_FIXTURE_ROOT='{}'\n{}\n",
+            "#!/bin/sh\nset -eu\nexport LIMIVRA_FIXTURE_ROOT='{}'\nprintf '%s\\n' \"$$\" > '{}/fixture-root-pid'\n{}\n",
+            root.display(),
             root.display(),
             script
         );
@@ -36,7 +42,12 @@ impl Fixture {
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700))
             .expect("make fake process executable");
 
-        Self { root, executable }
+        Self {
+            root,
+            executable,
+            active_pids: Mutex::new(std::collections::HashSet::new()),
+            reaped_pids: Mutex::new(std::collections::HashSet::new()),
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -60,7 +71,10 @@ impl Fixture {
             loop {
                 match fs::read_to_string(&marker) {
                     Ok(contents) => match contents.trim().parse::<u32>() {
-                        Ok(pid) => return Ok(pid),
+                        Ok(pid) => {
+                            self.active_pids.lock().unwrap().insert(pid);
+                            return Ok(pid);
+                        }
                         Err(_) => tokio::time::sleep(Duration::from_millis(1)).await,
                     },
                     Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -79,11 +93,30 @@ impl Fixture {
             !Path::new(&format!("/proc/{pid}")).exists(),
             "fixture process {pid} was not reaped"
         );
+        self.active_pids.lock().unwrap().remove(&pid);
+        self.reaped_pids.lock().unwrap().insert(pid);
     }
 }
 
 impl Drop for Fixture {
     fn drop(&mut self) {
+        if let (Ok(pids), Ok(reaped_pids)) =
+            (self.active_pids.get_mut(), self.reaped_pids.get_mut())
+        {
+            if let Ok(contents) = fs::read_to_string(self.root.join("fixture-root-pid")) {
+                if let Ok(pid) = contents.trim().parse::<u32>() {
+                    if !reaped_pids.contains(&pid) {
+                        pids.insert(pid);
+                    }
+                }
+            }
+            for &pid in pids.iter() {
+                // SAFETY: fixtures register only PIDs read from their own private markers.
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                }
+            }
+        }
         let _ = fs::remove_dir_all(&self.root);
     }
 }

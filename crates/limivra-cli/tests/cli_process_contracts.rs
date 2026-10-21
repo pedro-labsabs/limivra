@@ -1,16 +1,14 @@
 use std::{
     os::unix::fs::PermissionsExt,
     path::PathBuf,
-    process::{Command, Output},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Mutex,
-    },
+    process::{Command, Output, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 
 const SERIAL: &str = "LIMIVRA-TEST-SERIAL-XYZ";
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
-static FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+static FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct Fixture {
     root: PathBuf,
@@ -61,6 +59,39 @@ impl Fixture {
             .expect("run limivra-cli with isolated fake tools")
     }
 
+    async fn run_with_timeout(&self, args: &[&str], timeout: Duration) -> Option<Output> {
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_limivra-cli"));
+        command
+            .env_clear()
+            .env("PATH", &self.bin)
+            .env("HOME", &self.home)
+            .env("LC_ALL", "C")
+            .env("TERM", "dumb")
+            .env("LIMIVRA_FAKE_LOG", &self.log)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true);
+        let child = command.spawn().expect("spawn CLI in private process group");
+        let process_group = child.id().expect("CLI child PID") as libc::pid_t;
+        let mut task = tokio::spawn(async move { child.wait_with_output().await });
+        match tokio::time::timeout(timeout, &mut task).await {
+            Ok(Ok(Ok(output))) => Some(output),
+            Ok(_) => None,
+            Err(_) => {
+                if !task.is_finished() {
+                    // SAFETY: process_group is the fresh process group assigned to this fixture CLI.
+                    unsafe {
+                        libc::kill(-process_group, libc::SIGKILL);
+                    }
+                }
+                let _ = task.await;
+                None
+            }
+        }
+    }
+
     fn install_device_listing(&self) {
         self.install(
             "adb",
@@ -83,9 +114,9 @@ fn output_text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-#[test]
-fn devices_uses_only_fake_adb_and_redacts_serial_sentinel() {
-    let _fixture_lock = FIXTURE_LOCK.lock().unwrap();
+#[tokio::test]
+async fn devices_uses_only_fake_adb_and_redacts_serial_sentinel() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let fixture = Fixture::new();
     fixture.install_device_listing();
 
@@ -103,9 +134,9 @@ fn devices_uses_only_fake_adb_and_redacts_serial_sentinel() {
     );
 }
 
-#[test]
-fn doctor_handles_missing_and_nonzero_tools() {
-    let _fixture_lock = FIXTURE_LOCK.lock().unwrap();
+#[tokio::test]
+async fn doctor_handles_missing_and_nonzero_tools() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let missing = Fixture::new();
     let output = missing.run(&["doctor"]);
     assert!(output.status.success());
@@ -119,13 +150,52 @@ fn doctor_handles_missing_and_nonzero_tools() {
     let output = nonzero.run(&["doctor"]);
     assert!(output.status.success());
     let stdout = output_text(&output.stdout);
-    assert!(stdout.contains("[FALHA] adb: não encontrado no PATH"));
+    assert!(stdout.contains("[FALHA] adb: terminou com código Some(7)"));
     assert!(stdout.contains("[FALHA] scrcpy:"));
 }
 
-#[test]
-fn invalid_utf8_or_oversized_adb_output_does_not_panic() {
-    let _fixture_lock = FIXTURE_LOCK.lock().unwrap();
+#[tokio::test]
+async fn doctor_bounds_version_output() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::new();
+    fixture.install("adb", "exec /usr/bin/head -c 1048577 /dev/zero");
+    fixture.install("scrcpy", "printf '%s\\n' 'scrcpy 3.2.1 <synthetic>'");
+
+    let output = fixture.run(&["doctor"]);
+
+    assert!(output.status.success());
+    let stdout = output_text(&output.stdout);
+    assert!(
+        stdout.contains("adb: saída excedeu o limite"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.len() < 1024);
+}
+
+#[tokio::test]
+async fn doctor_times_out_hanging_tool() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::new();
+    fixture.install("adb", "exec /bin/sleep 30");
+    fixture.install("scrcpy", "printf '%s\\n' 'scrcpy 3.2.1 <synthetic>'");
+
+    let output = fixture
+        .run_with_timeout(&["doctor"], Duration::from_secs(3))
+        .await
+        .expect("doctor must return after its bounded adb version probe");
+
+    assert!(output.status.success());
+    let stdout = output_text(&output.stdout);
+    assert!(
+        stdout.contains("adb: tempo limite excedido"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.len() < 1024);
+}
+
+#[tokio::test]
+async fn invalid_utf8_or_oversized_adb_output_does_not_panic() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let invalid = Fixture::new();
     invalid.install("adb", "printf '\\377'");
     let output = invalid.run(&["devices"]);
@@ -150,9 +220,9 @@ fn invalid_utf8_or_oversized_adb_output_does_not_panic() {
     assert!(!stderr.contains(SERIAL));
 }
 
-#[test]
-fn probe_failure_has_bounded_non_sensitive_output() {
-    let _fixture_lock = FIXTURE_LOCK.lock().unwrap();
+#[tokio::test]
+async fn probe_failure_has_bounded_non_sensitive_output() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let fixture = Fixture::new();
     let adb = format!(
         "printf '%s\\n' \"$*\" >> \"$LIMIVRA_FAKE_LOG\"\n\

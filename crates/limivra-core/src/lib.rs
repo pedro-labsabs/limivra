@@ -6,7 +6,7 @@ pub mod fallback;
 pub mod host_controls;
 pub mod input_policy;
 pub mod launcher;
-mod process;
+pub mod process;
 pub mod provider;
 pub mod scrcpy;
 pub mod session;
