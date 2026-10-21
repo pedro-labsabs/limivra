@@ -419,7 +419,7 @@ mod tests {
             CoreError::ScrcpyError(msg) => {
                 assert!(msg.contains("--new-display"));
             }
-            other => panic!("Esperava ScrcpyError, obteve: {:?}", other),
+            other => panic!("Esperava ScrcpyError, obteve: {other:?}"),
         }
     }
 
@@ -442,7 +442,7 @@ mod tests {
             FallbackReason::ScrcpyUnsupported { detail } => {
                 assert!(detail.contains("não comprovadas"));
             }
-            other => panic!("Esperava ScrcpyUnsupported, obteve: {:?}", other),
+            other => panic!("Esperava ScrcpyUnsupported, obteve: {other:?}"),
         }
         assert_eq!(record.fallback_mode, DisplayMode::Mirror);
 
@@ -453,7 +453,7 @@ mod tests {
                 assert_eq!(serial, "serial_host_fail");
                 assert_eq!(mode, DisplayMode::Mirror);
             }
-            other => panic!("Esperava estado Active com Mirror, obteve: {:?}", other),
+            other => panic!("Esperava estado Active com Mirror, obteve: {other:?}"),
         }
 
         // Verifica que evento FallbackTriggered foi emitido para a interface
@@ -465,9 +465,8 @@ mod tests {
             } = event
             {
                 assert_eq!(target_mode, DisplayMode::Mirror);
-                match reason {
-                    FallbackReason::ScrcpyUnsupported { .. } => saw_fallback_event = true,
-                    _ => {}
+                if let FallbackReason::ScrcpyUnsupported { .. } = reason {
+                    saw_fallback_event = true;
                 }
             }
         }
@@ -500,7 +499,7 @@ mod tests {
         if let Ok(Some(record)) = fallback_opt {
             match record.reason {
                 FallbackReason::ProcessError { .. } => {}
-                other => panic!("Esperava ProcessError, obteve: {:?}", other),
+                other => panic!("Esperava ProcessError, obteve: {other:?}"),
             }
             assert_eq!(record.fallback_mode, DisplayMode::Mirror);
         }
@@ -562,7 +561,7 @@ mod tests {
                     }
                 );
             }
-            other => panic!("Esperava Active, obteve: {:?}", other),
+            other => panic!("Esperava Active, obteve: {other:?}"),
         }
 
         // Encerra explicitamente
