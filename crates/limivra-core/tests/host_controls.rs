@@ -1,5 +1,13 @@
 use limivra_core::host_controls::{ControlAction, KeyStroke};
 
+#[cfg(target_os = "linux")]
+static PROCESS_FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(target_os = "linux")]
+mod common;
+#[cfg(target_os = "linux")]
+use common::process::Fixture;
+
 fn shortcut(key: char) -> KeyStroke {
     KeyStroke {
         key,
@@ -247,19 +255,48 @@ fn app_intents_require_active_virtual_and_return_is_local() {
     assert_eq!(before, controls);
 }
 
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn explicit_stop_stays_idempotent_after_monitor_runs() {
+    use std::time::Duration;
+
+    use limivra_core::SessionEvent;
+
+    let _fixture_lock = PROCESS_FIXTURE_LOCK.lock().await;
+
+    let fixture = Fixture::new(
+        "printf '%s\\n' \"$$\" > \"$LIMIVRA_FIXTURE_ROOT/monitored-child\"; kill -TERM \"$$\"",
+    );
     let session = limivra_core::SessionController::new();
+    let mut events = session.subscribe();
     session
-        .start("sleep", &["30"], "test-target", DisplayMode::Mirror)
+        .start(
+            fixture.path().to_str().unwrap(),
+            &[],
+            "synthetic-device",
+            DisplayMode::Mirror,
+        )
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let pid = fixture
+        .wait_for_pid("monitored-child", Duration::from_secs(2))
+        .await
+        .unwrap();
+    let exit = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let SessionEvent::ProcessExited(code) = events.recv().await.unwrap() {
+                break code;
+            }
+        }
+    })
+    .await
+    .expect("monitor did not observe child termination");
+    assert_eq!(exit, None);
+    assert_eq!(session.current_state().await, SessionState::Terminated);
+    fixture.assert_reaped(pid);
+
     session.stop().await.unwrap();
-    // A late monitor must not change Disconnected back to Terminated.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(session.current_state().await, SessionState::Disconnected);
     session.stop().await.unwrap();
     assert_eq!(session.current_state().await, SessionState::Disconnected);
-    // The actual PID-reap regression is in launcher_runner.rs.
 }

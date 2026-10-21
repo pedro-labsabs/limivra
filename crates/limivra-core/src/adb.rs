@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+const MAX_STRUCTURED_LINE_BYTES: usize = 16 * 1024;
+
 /// Estado de autorização e prontidão de um dispositivo Android via ADB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceStatus {
@@ -42,6 +44,9 @@ pub fn parse_adb_devices_output(output: &str) -> Vec<AdbDevice> {
     let mut devices = Vec::new();
 
     for line in output.lines() {
+        if line.len() > MAX_STRUCTURED_LINE_BYTES || line.contains('\u{fffd}') {
+            continue;
+        }
         let trimmed = line.trim();
         // Ignora linhas vazias ou cabeçalhos do daemon
         if trimmed.is_empty()
@@ -52,21 +57,17 @@ pub fn parse_adb_devices_output(output: &str) -> Vec<AdbDevice> {
         }
 
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        if parts.is_empty() {
+        if parts.len() < 2 {
             continue;
         }
 
         let serial = parts[0].to_string();
-        let status = if parts.len() > 1 {
-            match parts[1] {
-                "device" => DeviceStatus::Device,
-                "unauthorized" => DeviceStatus::Unauthorized,
-                "offline" => DeviceStatus::Offline,
-                "recovery" | "sideload" => DeviceStatus::Recovery,
-                _ => DeviceStatus::Unknown,
-            }
-        } else {
-            DeviceStatus::Unknown
+        let status = match parts[1] {
+            "device" => DeviceStatus::Device,
+            "unauthorized" => DeviceStatus::Unauthorized,
+            "offline" => DeviceStatus::Offline,
+            "recovery" | "sideload" => DeviceStatus::Recovery,
+            _ => DeviceStatus::Unknown,
         };
 
         let mut model = None;

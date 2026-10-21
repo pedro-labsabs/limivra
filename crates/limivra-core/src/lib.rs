@@ -6,12 +6,14 @@ pub mod fallback;
 pub mod host_controls;
 pub mod input_policy;
 pub mod launcher;
+mod process;
 pub mod provider;
 pub mod scrcpy;
 pub mod session;
 pub mod wifi;
 
 use serde::{Deserialize, Serialize};
+use std::{ffi::OsString, path::Path, time::Duration};
 use thiserror::Error;
 
 pub use adb::{AdbDevice, DeviceStatus};
@@ -72,20 +74,24 @@ pub struct DeviceDiscovery;
 impl DeviceDiscovery {
     /// Executa `adb devices -l` de forma assíncrona e retorna os dispositivos detectados.
     pub async fn list_devices() -> Result<Vec<AdbDevice>, CoreError> {
-        let output = tokio::process::Command::new("adb")
-            .arg("devices")
-            .arg("-l")
-            .output()
-            .await
-            .map_err(|e| CoreError::AdbError(e.to_string()))?;
+        let output = process::run_bounded(
+            Path::new("adb"),
+            &[OsString::from("devices"), OsString::from("-l")],
+            Duration::from_secs(5),
+            1024 * 1024,
+        )
+        .await
+        .map_err(|error| CoreError::AdbError(format!("adb devices probe failed: {error}")))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CoreError::AdbError(stderr.to_string()));
+            return Err(CoreError::AdbError(
+                "adb devices exited with a non-zero status".into(),
+            ));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(adb::parse_adb_devices_output(&stdout))
+        let stdout = std::str::from_utf8(&output.stdout)
+            .map_err(|_| CoreError::AdbError("adb devices output is not valid UTF-8".into()))?;
+        Ok(adb::parse_adb_devices_output(stdout))
     }
 
     /// Seleciona o dispositivo de forma determinística e segura:

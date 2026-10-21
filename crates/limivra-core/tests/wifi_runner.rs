@@ -8,6 +8,7 @@ use std::{
 };
 use tokio::time::Instant;
 static NEXT: AtomicU64 = AtomicU64::new(0);
+static FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 struct Fixture {
     root: PathBuf,
     home: PathBuf,
@@ -80,7 +81,8 @@ if a == ['server','nodaemon']:
         PrivateAdbRunner::new(self.adb.clone(), self.home.clone(), self.runtime.clone()).unwrap()
     }
     fn assert_reaped(&self, name: &str) {
-        let pid = std::fs::read_to_string(self.root.join(name)).unwrap();
+        let pid = std::fs::read_to_string(self.root.join(name))
+            .unwrap_or_else(|error| panic!("missing process marker {name}: {error}"));
         assert!(
             !PathBuf::from(format!("/proc/{pid}")).exists(),
             "process not reaped"
@@ -105,6 +107,7 @@ fn request(kind: RequestKind) -> AdbRequest {
 }
 #[tokio::test]
 async fn private_server_stdin_and_exact_target_commands() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new(
         r#"if a == ['pair','192.168.1.9:4321']:
     assert sys.stdin.readline() == '123456\n'
@@ -143,6 +146,7 @@ else:
 }
 #[tokio::test]
 async fn false_success_and_echoed_secrets_never_escape_as_errors() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for body in [
         "print('failed to connect to 192.168.1.9:4321')",
         "print('123456 private-output'); print('123456 private-stderr',file=sys.stderr)",
@@ -162,11 +166,37 @@ async fn false_success_and_echoed_secrets_never_escape_as_errors() {
         runner.shutdown().await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn invalid_utf8_reply_fails_closed() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
+    let f = Fixture::new("sys.stdout.buffer.write(bytes([255]))");
+    let runner = f.runner();
+    assert_eq!(
+        runner
+            .run(
+                request(RequestKind::Connect),
+                Instant::now() + Duration::from_secs(3),
+                Cancellation::default(),
+            )
+            .await,
+        Err(WifiError::UnexpectedReply)
+    );
+    runner.shutdown().await.unwrap();
+    f.assert_reaped("client.pid");
+    f.assert_reaped("server.pid");
+}
+
 #[tokio::test]
 async fn bounded_output_and_timeouts_kill_and_reap_only_owned_processes() {
-    for (body, expected) in [
-        ("print('x'*9000)", WifiError::OutputLimit),
-        ("time.sleep(60)", WifiError::Timeout),
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
+    for (body, expected, timeout) in [
+        (
+            "print('x'*9000)",
+            WifiError::OutputLimit,
+            Duration::from_secs(3),
+        ),
+        ("time.sleep(60)", WifiError::Timeout, Duration::from_secs(3)),
     ] {
         let f = Fixture::new(body);
         let runner = f.runner();
@@ -174,7 +204,7 @@ async fn bounded_output_and_timeouts_kill_and_reap_only_owned_processes() {
             runner
                 .run(
                     request(RequestKind::Connect),
-                    Instant::now() + Duration::from_millis(300),
+                    Instant::now() + timeout,
                     Cancellation::default()
                 )
                 .await,
@@ -187,6 +217,7 @@ async fn bounded_output_and_timeouts_kill_and_reap_only_owned_processes() {
 }
 #[tokio::test]
 async fn rejects_unsafe_storage_and_preexisting_socket_without_touching_it() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("print('device')");
     std::fs::set_permissions(&f.home, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(matches!(
@@ -217,6 +248,7 @@ async fn wait_for(path: &std::path::Path) {
 }
 #[tokio::test]
 async fn cancellation_during_each_client_operation_reaps_clients_and_server() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for kind in [RequestKind::Pair, RequestKind::Connect, RequestKind::Probe] {
         let f = Fixture::new("time.sleep(60)");
         let runner = f.runner();
@@ -242,6 +274,7 @@ async fn cancellation_during_each_client_operation_reaps_clients_and_server() {
 }
 #[tokio::test]
 async fn dropping_the_call_future_still_runs_supervised_cleanup() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("time.sleep(60)");
     let runner = f.runner();
     let worker = runner.clone();
@@ -263,6 +296,7 @@ async fn dropping_the_call_future_still_runs_supervised_cleanup() {
 }
 #[tokio::test]
 async fn unsupported_backend_and_stderr_overflow_fail_closed() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("print('device')");
     let script = std::fs::read_to_string(&f.adb).unwrap().replace(
         "print('-L SOCKET pair server nodaemon')",
@@ -299,6 +333,7 @@ async fn unsupported_backend_and_stderr_overflow_fail_closed() {
 }
 #[tokio::test]
 async fn hostile_parent_environment_is_not_inherited() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     if std::env::var_os("LIMIVRA_WIFI_TEST_CHILD").is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "hostile_parent_environment_is_not_inherited"])
@@ -333,6 +368,7 @@ async fn hostile_parent_environment_is_not_inherited() {
 }
 #[tokio::test]
 async fn key_store_symlinks_and_public_files_are_rejected() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("print('device')");
     let path = f.home.join(".android/extra");
     std::os::unix::fs::symlink("/dev/null", &path).unwrap();
@@ -351,6 +387,7 @@ async fn key_store_symlinks_and_public_files_are_rejected() {
 
 #[tokio::test]
 async fn shutdown_also_targets_the_owned_socket_to_stop_backend_restarts() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("print('device')");
     let runner = f.runner();
     runner
@@ -368,6 +405,7 @@ async fn shutdown_also_targets_the_owned_socket_to_stop_backend_restarts() {
 
 #[tokio::test]
 async fn daemon_exit_during_command_cannot_confirm_a_connection() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new("os.kill(int((root/'server.pid').read_text()),signal.SIGKILL)\ntime.sleep(0.02)\nprint('connected to 192.168.1.9:4321')");
     let runner = f.runner();
     assert_eq!(
@@ -387,6 +425,7 @@ async fn daemon_exit_during_command_cannot_confirm_a_connection() {
 
 #[tokio::test]
 async fn offline_and_unauthorized_are_typed_for_recovery_policy() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for (body, expected) in [
         (
             "print('error: device offline',file=sys.stderr); sys.exit(1)",
@@ -415,6 +454,7 @@ async fn offline_and_unauthorized_are_typed_for_recovery_policy() {
 
 #[tokio::test]
 async fn disappeared_target_and_exact_connection_refusal_are_recoverable() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for (kind, body) in [
         (RequestKind::Probe, "print(\"error: device '192.168.1.9:4321' not found\",file=sys.stderr); sys.exit(1)"),
         (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': Connection refused\")"),
@@ -430,6 +470,7 @@ async fn disappeared_target_and_exact_connection_refusal_are_recoverable() {
 
 #[tokio::test]
 async fn unknown_other_target_and_authorization_failures_are_not_retried_as_offline() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for (kind, body, expected) in [
         (RequestKind::Probe, "print(\"error: device '192.168.1.10:4321' not found\",file=sys.stderr); sys.exit(1)", WifiError::CommandFailed),
         (RequestKind::Connect, "print(\"failed to connect to '192.168.1.10:4321': Connection refused\")", WifiError::UnexpectedReply),
@@ -448,6 +489,7 @@ async fn unknown_other_target_and_authorization_failures_are_not_retried_as_offl
 
 #[tokio::test]
 async fn actual_runner_recovers_disappeared_target_with_backoff_without_pair_replay() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new(
         r#"if a[0] == 'pair':
     assert sys.stdin.readline() == '123456\n'
@@ -521,6 +563,7 @@ elif a[0] == '-s':
 
 #[tokio::test]
 async fn mandatory_key_is_revalidated_after_construction_before_any_process() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for change in 0..5 {
         let f = Fixture::new("print('device')");
         let runner = f.runner();
@@ -562,6 +605,7 @@ async fn mandatory_key_is_revalidated_after_construction_before_any_process() {
 
 #[tokio::test]
 async fn key_disappearing_between_help_daemon_and_client_blocks_next_launch() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for boundary in ["help", "daemon"] {
         let f = Fixture::new("print('device')");
         let script = std::fs::read_to_string(&f.adb).unwrap();
@@ -603,6 +647,7 @@ async fn key_disappearing_between_help_daemon_and_client_blocks_next_launch() {
 
 #[tokio::test]
 async fn key_removed_before_reuse_or_restart_denies_client_and_new_daemon() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
     for restart in [false, true] {
         let f = Fixture::new("print('device')");
         let runner = f.runner();

@@ -304,6 +304,7 @@ impl LauncherRunner for BlockedRunner {
             matches!(request, LauncherRequest::Resolve { .. })
         };
         if block {
+            self.inner.calls.lock().unwrap().push(request);
             Box::pin(async move {
                 self.entered.notify_one();
                 std::future::pending().await
@@ -337,12 +338,37 @@ async fn stop_cancels_pending_resolution_or_start_and_old_context_cannot_relaunc
             tokio::spawn(async move { p2.launch_allowed_app(AllowedApp::Settings, &*r2).await });
         r.entered.notified().await;
         p.stop().await.unwrap();
+        let replacement_runner = Mock::new(vec![
+            displays(&[0]),
+            displays(&[0, 9]),
+            resolved("com.android.settings"),
+            displays(&[0, 9]),
+            Ok(LauncherReply::Accepted),
+        ]);
+        active(&p, &replacement_runner, &t).await.unwrap();
+        assert!(matches!(
+            p.current_state().await,
+            SessionState::Active {
+                mode: DisplayMode::VirtualDisplay { .. },
+                ..
+            }
+        ));
         assert_eq!(task.await.unwrap(), Err(LaunchError::StaleContext));
-        assert_eq!(p.current_state().await, SessionState::Disconnected);
+        let old_starts = r
+            .inner
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|call| matches!(call, LauncherRequest::Start { .. }))
+            .count();
+        assert_eq!(old_starts, usize::from(block_start));
         assert_eq!(
-            p.launch_allowed_app(AllowedApp::Settings, &*r).await,
-            Err(LaunchError::NotActive)
+            p.launch_allowed_app(AllowedApp::Settings, &replacement_runner)
+                .await,
+            Ok(LaunchOutcome::Accepted { display_id: 9 })
         );
+        p.stop().await.unwrap();
     }
 }
 

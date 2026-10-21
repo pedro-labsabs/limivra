@@ -153,6 +153,18 @@ async fn resolution_fails_closed_for_ambiguous_foreign_and_malformed_output() {
 }
 
 #[tokio::test]
+async fn invalid_utf8_reply_fails_closed_without_accepting_prefixes() {
+    let _fixture_lock = FIXTURE_LOCK.lock().await;
+    for body in ["printf '\\377'", "printf '\\377' >&2"] {
+        let f = Fixture::new(body);
+        assert_eq!(
+            f.runner().run("test-target", resolve()).await,
+            Err(LaunchError::UnexpectedReply)
+        );
+    }
+}
+
+#[tokio::test]
 async fn display_observation_uses_typed_ids_without_names() {
     let _fixture_lock = FIXTURE_LOCK.lock().await;
     let f = Fixture::new(

@@ -1,6 +1,9 @@
 use crate::{CoreError, DisplayMode};
 use serde::{Deserialize, Serialize};
+use std::{ffi::OsString, path::Path, time::Duration};
 use tracing::{info, warn};
+
+const MAX_STRUCTURED_LINE_BYTES: usize = 16 * 1024;
 
 /// Versão analisada do scrcpy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,16 +18,22 @@ impl ScrcpyVersion {
     /// Faz o parse da saída de `scrcpy --version`.
     pub fn parse(output: &str) -> Option<Self> {
         let first_line = output.lines().next()?;
+        if first_line.len() > MAX_STRUCTURED_LINE_BYTES || first_line.contains('\u{fffd}') {
+            return None;
+        }
         let parts: Vec<&str> = first_line.split_whitespace().collect();
         if parts.len() < 2 || !parts[0].eq_ignore_ascii_case("scrcpy") {
             return None;
         }
 
         let ver_str = parts[1];
-        let mut num_parts = ver_str.split('.');
-        let major = num_parts.next()?.parse().ok()?;
-        let minor = num_parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-        let patch = num_parts.next().and_then(|s| s.parse().ok());
+        let num_parts = ver_str.split('.').collect::<Vec<_>>();
+        if !(2..=3).contains(&num_parts.len()) {
+            return None;
+        }
+        let major = num_parts[0].parse().ok()?;
+        let minor = num_parts[1].parse().ok()?;
+        let patch = num_parts.get(2).map(|part| part.parse()).transpose().ok()?;
 
         Some(Self {
             major,
@@ -228,14 +237,26 @@ pub struct ScrcpyAdapter;
 impl ScrcpyAdapter {
     /// Detecta a versão do scrcpy instalado executando `scrcpy --version`.
     pub async fn detect_version() -> Result<ScrcpyVersion, CoreError> {
-        let output = tokio::process::Command::new("scrcpy")
-            .arg("--version")
-            .output()
-            .await
-            .map_err(|e| CoreError::DependencyMissing(format!("scrcpy não encontrado: {e}")))?;
+        let output = crate::process::run_bounded(
+            Path::new("scrcpy"),
+            &[OsString::from("--version")],
+            Duration::from_secs(5),
+            1024 * 1024,
+        )
+        .await
+        .map_err(|error| {
+            CoreError::DependencyMissing(format!("scrcpy version probe failed: {error}"))
+        })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        ScrcpyVersion::parse(&stdout).ok_or_else(|| {
+        if !output.status.success() {
+            return Err(CoreError::DependencyMissing(
+                "scrcpy --version exited with a non-zero status".into(),
+            ));
+        }
+        let stdout = std::str::from_utf8(&output.stdout).map_err(|_| {
+            CoreError::DependencyMissing("scrcpy version output is not valid UTF-8".into())
+        })?;
+        ScrcpyVersion::parse(stdout).ok_or_else(|| {
             CoreError::DependencyMissing("Saída de versão do scrcpy irreconhecível".into())
         })
     }
@@ -245,29 +266,31 @@ impl ScrcpyAdapter {
         let version = Self::detect_version().await.ok();
 
         // Tenta inspecionar o help real
-        let help_res = tokio::process::Command::new("scrcpy")
-            .arg("--help")
-            .output()
-            .await;
-
-        match help_res {
-            Ok(output) if output.status.success() => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                Ok(ScrcpyCapabilities::from_help_output(&stdout, version))
-            }
-            _ => {
-                if let Some(ver) = version {
-                    warn!(
-                        "Não foi possível executar 'scrcpy --help'; utilizando heurística da versão {}",
-                        ver.raw
-                    );
-                    Ok(ScrcpyCapabilities::from_version_heuristic(ver))
-                } else {
-                    Err(CoreError::DependencyMissing(
-                        "Binário scrcpy ausente ou não responde a --version / --help".into(),
-                    ))
+        let help_res = crate::process::run_bounded(
+            Path::new("scrcpy"),
+            &[OsString::from("--help")],
+            Duration::from_secs(5),
+            1024 * 1024,
+        )
+        .await;
+        if let Ok(output) = help_res {
+            if output.status.success() {
+                if let Ok(stdout) = std::str::from_utf8(&output.stdout) {
+                    return Ok(ScrcpyCapabilities::from_help_output(stdout, version));
                 }
             }
+        }
+
+        if let Some(ver) = version {
+            warn!(
+                "Não foi possível executar 'scrcpy --help'; utilizando heurística da versão {}",
+                ver.raw
+            );
+            Ok(ScrcpyCapabilities::from_version_heuristic(ver))
+        } else {
+            Err(CoreError::DependencyMissing(
+                "Binário scrcpy ausente ou não responde a --version / --help".into(),
+            ))
         }
     }
 

@@ -429,7 +429,11 @@ async fn execute(
                 stdin.write_all(&code.0).await.map_err(|_| WifiError::Io)?;
                 stdin.write_all(b"\n").await.map_err(|_| WifiError::Io)?;
             }
-            stdin.shutdown().await.map_err(|_| WifiError::Io)
+            // Closing an unused stdin must not turn a fast, successful child
+            // exit into an I/O failure. Dropping the pipe sends EOF without
+            // treating a concurrent child close as a write error.
+            drop(stdin);
+            Ok::<(), WifiError>(())
         };
         let wait = async { child.wait().await.map_err(|_| WifiError::Io) };
         let (status, (), out, err) =
@@ -466,7 +470,10 @@ async fn execute(
     result
 }
 fn has_unauthorized(bytes: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(bytes).to_ascii_lowercase();
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let text = text.to_ascii_lowercase();
     text.contains("unauthorized") || text.contains("authentication failed")
 }
 fn parse_reply(
@@ -475,16 +482,16 @@ fn parse_reply(
     out: &[u8],
     err: &[u8],
 ) -> Result<AdbReply, WifiError> {
+    let out_text = std::str::from_utf8(out).map_err(|_| WifiError::UnexpectedReply)?;
+    let err_text = std::str::from_utf8(err).map_err(|_| WifiError::UnexpectedReply)?;
     if has_unauthorized(out) || has_unauthorized(err) {
         return Ok(AdbReply::Unauthorized);
     }
     if recoverable_reply(kind, endpoint, out, err) {
         return Err(WifiError::Offline);
     }
-    let text = std::str::from_utf8(out)
-        .map_err(|_| WifiError::UnexpectedReply)?
-        .trim();
-    if !err.is_empty() {
+    let text = out_text.trim();
+    if !err_text.is_empty() {
         return Err(WifiError::UnexpectedReply);
     }
     match kind {

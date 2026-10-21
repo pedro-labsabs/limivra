@@ -273,6 +273,7 @@ struct Slow {
     mock: Mock,
     blocked: Arc<Mutex<Option<RequestKind>>>,
     started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
 }
 impl AdbRunner for Slow {
     async fn run(
@@ -285,8 +286,11 @@ impl AdbRunner for Slow {
         if block {
             self.mock.calls.lock().unwrap().push(request.kind);
             self.started.notify_one();
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            return Ok(AdbReply::Connected); // Deliberately late and ignores cancellation.
+            self.release.notified().await;
+            return Ok(match request.kind {
+                RequestKind::Probe => AdbReply::Device,
+                _ => AdbReply::Connected,
+            });
         }
         self.mock.run(request, deadline, cancellation).await
     }
@@ -327,6 +331,42 @@ async fn busy_cancel_and_late_response_cannot_resurrect_connection() {
         c.connect(Consent::Granted, Consent::Denied).await,
         Err(WifiError::NotPaired)
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancel_during_device_probe_cannot_restore_connected() {
+    let runner = Slow::default();
+    runner.mock.queue([Ok(AdbReply::Paired)]);
+    let c = Arc::new(WifiController::new(runner.clone(), endpoint(4321)));
+    c.pair(
+        endpoint(1234),
+        PairingCode::parse("123456").unwrap(),
+        Consent::Granted,
+    )
+    .await
+    .unwrap();
+    runner.mock.queue([Ok(AdbReply::Connected)]);
+    *runner.blocked.lock().unwrap() = Some(RequestKind::Probe);
+    let mut events = c.subscribe();
+    let worker = Arc::clone(&c);
+    let task =
+        tokio::spawn(async move { worker.connect(Consent::Granted, Consent::Granted).await });
+    runner.started.notified().await;
+    assert_eq!(c.state(), WifiState::Connecting);
+
+    c.cancel().await.unwrap();
+    assert_eq!(task.await.unwrap(), Err(WifiError::Cancelled));
+    runner.release.notify_one();
+    tokio::time::advance(Duration::from_secs(60)).await;
+
+    assert_eq!(c.state(), WifiState::Disconnected);
+    assert_eq!(
+        *runner.mock.calls.lock().unwrap(),
+        [RequestKind::Pair, RequestKind::Connect, RequestKind::Probe]
+    );
+    while let Ok(event) = events.try_recv() {
+        assert_ne!(event, WifiEvent::StateChanged(WifiState::Connected));
+    }
 }
 #[tokio::test(start_paused = true)]
 async fn disconnect_enforces_timeout_even_when_backend_ignores_deadline() {

@@ -1,6 +1,9 @@
 use crate::{scrcpy::ScrcpyCapabilities, CoreError, DisplayMode};
 use serde::{Deserialize, Serialize};
+use std::{ffi::OsString, path::Path, time::Duration};
 use tracing::{info, warn};
+
+const MAX_STRUCTURED_LINE_BYTES: usize = 16 * 1024;
 
 /// Informações de um display detectado no dispositivo Android.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +65,9 @@ impl DisplayProber {
         let mut current_id = 0u32;
 
         for line in output.lines() {
+            if line.len() > MAX_STRUCTURED_LINE_BYTES || line.contains('\u{fffd}') {
+                continue;
+            }
             let trimmed = line.trim();
 
             // Rastreamento contextual de IDs de display se disponível
@@ -82,15 +88,14 @@ impl DisplayProber {
             // Identificação de blocos DisplayDeviceInfo{...}
             if let Some(start_idx) = trimmed.find("DisplayDeviceInfo{") {
                 let info_content = &trimmed[start_idx + "DisplayDeviceInfo{".len()..];
-                let content = if let Some(end_idx) = info_content.rfind('}') {
-                    &info_content[..end_idx]
-                } else {
-                    info_content
-                };
-
-                let parsed_display = Self::parse_display_device_info(current_id, content);
-                displays.push(parsed_display);
-                current_id += 1;
+                if let Some(end_idx) = info_content.rfind('}') {
+                    if let Some(parsed_display) =
+                        Self::parse_display_device_info(current_id, &info_content[..end_idx])
+                    {
+                        displays.push(parsed_display);
+                    }
+                }
+                current_id = current_id.saturating_add(1);
             }
         }
 
@@ -98,34 +103,27 @@ impl DisplayProber {
     }
 
     /// Analisa o conteúdo interno de um bloco `DisplayDeviceInfo{...}`.
-    fn parse_display_device_info(fallback_id: u32, content: &str) -> AndroidDisplayInfo {
+    fn parse_display_device_info(fallback_id: u32, content: &str) -> Option<AndroidDisplayInfo> {
         // Extrai o nome entre aspas (ex: "Tela integrada", "scrcpy")
-        let name = if let Some(first_quote) = content.find('"') {
-            if let Some(second_quote) = content[first_quote + 1..].find('"') {
-                content[first_quote + 1..first_quote + 1 + second_quote].to_string()
-            } else {
-                format!("Display-{fallback_id}")
-            }
-        } else {
-            format!("Display-{fallback_id}")
-        };
+        let first_quote = content.find('"')?;
+        let after_first_quote = &content[first_quote + 1..];
+        let second_quote = after_first_quote.find('"')?;
+        let name = after_first_quote[..second_quote].to_string();
+        if name.is_empty() || name.contains('\u{fffd}') {
+            return None;
+        }
 
         // Resolução: procura padrão "1080 x 2400" ou similar
-        let mut width = 0u32;
-        let mut height = 0u32;
-        for part in content.split(',') {
-            let part_trim = part.trim();
-            if part_trim.contains('x') {
-                let dims: Vec<&str> = part_trim.split('x').map(|s| s.trim()).collect();
-                if dims.len() == 2 {
-                    if let (Ok(w), Ok(h)) = (dims[0].parse::<u32>(), dims[1].parse::<u32>()) {
-                        width = w;
-                        height = h;
-                        break;
-                    }
-                }
+        let (width, height) = content.split(',').find_map(|part| {
+            let dims = part.split('x').map(str::trim).collect::<Vec<_>>();
+            if dims.len() != 2 {
+                return None;
             }
-        }
+            match (dims[0].parse::<u32>(), dims[1].parse::<u32>()) {
+                (Ok(width), Ok(height)) if width > 0 && height > 0 => Some((width, height)),
+                _ => None,
+            }
+        })?;
 
         // Densidade: procura "density 440" ou "density=440"
         let mut dpi = 160u32;
@@ -175,7 +173,7 @@ impl DisplayProber {
             }
         }
 
-        AndroidDisplayInfo {
+        Some(AndroidDisplayInfo {
             id: fallback_id,
             name,
             width,
@@ -187,7 +185,7 @@ impl DisplayProber {
             is_secure,
             is_trusted,
             raw_flags,
-        }
+        })
     }
 
     /// Analisa a saída simplificada do comando `scrcpy --list-displays`.
@@ -195,6 +193,9 @@ impl DisplayProber {
         let mut displays = Vec::new();
 
         for line in output.lines() {
+            if line.len() > MAX_STRUCTURED_LINE_BYTES || line.contains('\u{fffd}') {
+                continue;
+            }
             let trimmed = line.trim();
             if !trimmed.starts_with("--display-id=") {
                 continue;
@@ -212,18 +213,19 @@ impl DisplayProber {
                 Err(_) => continue,
             };
 
-            let mut width = 0;
-            let mut height = 0;
-
-            if let Some(res_token) = parts.next() {
-                let cleaned = res_token.trim_matches(|c| c == '(' || c == ')');
-                let dims: Vec<&str> = cleaned.split('x').collect();
-                if dims.len() == 2 {
-                    if let (Ok(w), Ok(h)) = (dims[0].parse(), dims[1].parse()) {
-                        width = w;
-                        height = h;
-                    }
-                }
+            let Some(res_token) = parts.next() else {
+                continue;
+            };
+            let cleaned = res_token.trim_matches(|c| c == '(' || c == ')');
+            let dims: Vec<&str> = cleaned.split('x').collect();
+            if dims.len() != 2 {
+                continue;
+            }
+            let (Ok(width), Ok(height)) = (dims[0].parse::<u32>(), dims[1].parse::<u32>()) else {
+                continue;
+            };
+            if width == 0 || height == 0 {
+                continue;
             }
 
             displays.push(AndroidDisplayInfo {
@@ -247,18 +249,24 @@ impl DisplayProber {
     /// Sonda as propriedades de hardware e sistema do dispositivo via comandos ADB shell getprop.
     pub async fn probe_device_profile(serial: &str) -> Result<DeviceProfile, CoreError> {
         let get_prop = |prop: &'static str| async move {
-            let output = tokio::process::Command::new("adb")
-                .arg("-s")
-                .arg(serial)
-                .arg("shell")
-                .arg("getprop")
-                .arg(prop)
-                .output()
-                .await;
+            let args = [
+                OsString::from("-s"),
+                OsString::from(serial),
+                OsString::from("shell"),
+                OsString::from("getprop"),
+                OsString::from(prop),
+            ];
+            let output = crate::process::run_bounded(
+                Path::new("adb"),
+                &args,
+                Duration::from_secs(5),
+                1024 * 1024,
+            )
+            .await;
 
             match output {
                 Ok(out) if out.status.success() => {
-                    let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    let val = std::str::from_utf8(&out.stdout).ok()?.trim().to_string();
                     if val.is_empty() {
                         None
                     } else {
@@ -289,25 +297,32 @@ impl DisplayProber {
 
     /// Sonda a lista de displays ativos no dispositivo via `dumpsys display`.
     pub async fn probe_displays(serial: &str) -> Result<Vec<AndroidDisplayInfo>, CoreError> {
-        let output = tokio::process::Command::new("adb")
-            .arg("-s")
-            .arg(serial)
-            .arg("shell")
-            .arg("dumpsys")
-            .arg("display")
-            .output()
-            .await
-            .map_err(|e| CoreError::AdbError(format!("Falha ao invocar dumpsys display: {e}")))?;
+        let args = [
+            OsString::from("-s"),
+            OsString::from(serial),
+            OsString::from("shell"),
+            OsString::from("dumpsys"),
+            OsString::from("display"),
+        ];
+        let output = crate::process::run_bounded(
+            Path::new("adb"),
+            &args,
+            Duration::from_secs(5),
+            1024 * 1024,
+        )
+        .await
+        .map_err(|e| CoreError::AdbError(format!("Falha ao invocar dumpsys display: {e}")))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CoreError::AdbError(format!(
-                "dumpsys display retornou erro: {stderr}"
-            )));
+            return Err(CoreError::AdbError(
+                "dumpsys display retornou status de erro".into(),
+            ));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed = Self::parse_dumpsys_display_output(&stdout);
+        let stdout = std::str::from_utf8(&output.stdout).map_err(|_| {
+            CoreError::AdbError("saída de dumpsys display não é UTF-8 válida".into())
+        })?;
+        let parsed = Self::parse_dumpsys_display_output(stdout);
         Ok(parsed)
     }
 
