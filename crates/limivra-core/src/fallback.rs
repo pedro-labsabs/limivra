@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FallbackReason {
     /// O binário scrcpy instalado no host não possui suporte à flag `--new-display`.
-    HostScrcpyUnsupported { detail: String },
+    ScrcpyUnsupported { detail: String },
     /// A versão do Android ou política de segurança da fabricante (OEM) bloqueou a criação de tela secundária.
-    RomPolicyDenied { detail: String },
-    /// Falha ao instanciar o display virtual secundário em tempo de execução (crash ou encerramento precoce).
-    VirtualDisplaySpawnFailed { detail: String },
+    RomDenied { detail: String },
+    /// Falha no subprocesso scrcpy durante o spawn ou execução da tela virtual.
+    ProcessError { detail: String },
+    /// Solicitação explícita de fallback ou contingência por configuração ou usuário.
+    ExplicitRequest { detail: String },
     /// Falha ao lançar o aplicativo direcionado na tela secundária ou launcher indisponível.
     LaunchAppFailed { detail: String },
 }
@@ -19,23 +21,26 @@ impl FallbackReason {
     /// "Nunca alternar invisivelmente nem declarar freeform."
     pub fn user_friendly_message(&self) -> String {
         match self {
-            Self::HostScrcpyUnsupported { detail } => {
+            Self::ScrcpyUnsupported { detail } => {
                 format!(
                     "O scrcpy instalado no host não possui suporte a displays virtuais ({detail}). \
                     Alternando explicitamente para espelhamento (Mirror)."
                 )
             }
-            Self::RomPolicyDenied { detail } => {
+            Self::RomDenied { detail } => {
                 format!(
                     "A ROM ou opções de desenvolvedor do Android negaram a criação do display virtual: {detail}. \
                     Alternando explicitamente para espelhamento (Mirror)."
                 )
             }
-            Self::VirtualDisplaySpawnFailed { detail } => {
+            Self::ProcessError { detail } => {
                 format!(
                     "O processo de exibição virtual falhou ao iniciar no Android ({detail}). \
                     Alternando explicitamente para espelhamento (Mirror) para manter a sessão ativa."
                 )
+            }
+            Self::ExplicitRequest { detail } => {
+                format!("Fallback para espelhamento solicitado explicitamente: {detail}.")
             }
             Self::LaunchAppFailed { detail } => {
                 format!(
@@ -75,26 +80,33 @@ mod tests {
 
     #[test]
     fn test_fallback_reason_user_friendly_messages() {
-        let r1 = FallbackReason::HostScrcpyUnsupported {
+        let r1 = FallbackReason::ScrcpyUnsupported {
             detail: "versão 1.25 sem --new-display".into(),
         };
         assert!(r1.user_friendly_message().contains("não possui suporte"));
         assert!(r1.user_friendly_message().contains("versão 1.25"));
 
-        let r2 = FallbackReason::RomPolicyDenied {
+        let r2 = FallbackReason::RomDenied {
             detail: "MIUI security permissions disabled".into(),
         };
         assert!(r2.user_friendly_message().contains("A ROM ou opções"));
 
-        let r3 = FallbackReason::VirtualDisplaySpawnFailed {
+        let r3 = FallbackReason::ProcessError {
             detail: "código de saída 1".into(),
         };
         assert!(r3.user_friendly_message().contains("falhou ao iniciar"));
 
-        let r4 = FallbackReason::LaunchAppFailed {
+        let r4 = FallbackReason::ExplicitRequest {
+            detail: "preferência do usuário".into(),
+        };
+        assert!(r4
+            .user_friendly_message()
+            .contains("solicitado explicitamente"));
+
+        let r5 = FallbackReason::LaunchAppFailed {
             detail: "ActivityNotFound".into(),
         };
-        assert!(r4.user_friendly_message().contains("não pôde ser iniciado"));
+        assert!(r5.user_friendly_message().contains("não pôde ser iniciado"));
     }
 
     #[test]
@@ -104,7 +116,7 @@ mod tests {
             height: 1080,
             dpi: 240,
         };
-        let reason = FallbackReason::HostScrcpyUnsupported {
+        let reason = FallbackReason::ScrcpyUnsupported {
             detail: "scrcpy v1.25".into(),
         };
         let record = FallbackRecord::new(reason.clone(), original);

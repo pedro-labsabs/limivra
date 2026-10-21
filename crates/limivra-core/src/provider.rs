@@ -241,7 +241,7 @@ impl VirtualDisplayProvider {
 
         // 1. Verificação de suporte no host (scrcpy >= 2.2/3.0 com --new-display comprovado)
         if !caps.supports_new_display {
-            let reason = FallbackReason::HostScrcpyUnsupported {
+            let reason = FallbackReason::ScrcpyUnsupported {
                 detail: match caps.probe_source {
                     crate::scrcpy::CapabilityProbeSource::HelpInspection => {
                         "saída de 'scrcpy --help' não contém a opção --new-display".into()
@@ -272,7 +272,7 @@ impl VirtualDisplayProvider {
             .start_with_command(executable, serial, config, caps, stay_awake)
             .await
         {
-            let reason = FallbackReason::VirtualDisplaySpawnFailed {
+            let reason = FallbackReason::ProcessError {
                 detail: format!("falha ao criar subprocesso scrcpy: {e}"),
             };
 
@@ -306,7 +306,7 @@ impl VirtualDisplayProvider {
         };
 
         if let Some(detail) = early_failure {
-            let reason = FallbackReason::VirtualDisplaySpawnFailed { detail };
+            let reason = FallbackReason::ProcessError { detail };
             warn!("[FALLBACK EXPLÍCITO] {}", reason.user_friendly_message());
             self.controller
                 .notify_fallback(reason.clone(), DisplayMode::Mirror);
@@ -439,10 +439,10 @@ mod tests {
 
         let record = fallback_opt.expect("deve ter retornado FallbackRecord");
         match record.reason {
-            FallbackReason::HostScrcpyUnsupported { detail } => {
+            FallbackReason::ScrcpyUnsupported { detail } => {
                 assert!(detail.contains("não comprovadas"));
             }
-            other => panic!("Esperava HostScrcpyUnsupported, obteve: {:?}", other),
+            other => panic!("Esperava ScrcpyUnsupported, obteve: {:?}", other),
         }
         assert_eq!(record.fallback_mode, DisplayMode::Mirror);
 
@@ -466,7 +466,7 @@ mod tests {
             {
                 assert_eq!(target_mode, DisplayMode::Mirror);
                 match reason {
-                    FallbackReason::HostScrcpyUnsupported { .. } => saw_fallback_event = true,
+                    FallbackReason::ScrcpyUnsupported { .. } => saw_fallback_event = true,
                     _ => {}
                 }
             }
@@ -493,23 +493,34 @@ mod tests {
         };
         let config = VirtualDisplayConfig::new(1920, 1080, 240);
 
-        // Usar um executável que falha imediatamente (como "false" no Unix)
-        // O fallback deve capturar a saída com erro e transicionar para o comando de espelhamento
-        // Usamos um wrapper que falha se receber --new-display
         let fallback_opt = provider
             .start_with_fallback_command("false", "serial_crash", &config, &caps, false)
             .await;
 
-        // "false" falha na execução ou no spawn imediato, provocando registro de fallback
         if let Ok(Some(record)) = fallback_opt {
             match record.reason {
-                FallbackReason::VirtualDisplaySpawnFailed { .. } => {}
-                other => panic!("Esperava VirtualDisplaySpawnFailed, obteve: {:?}", other),
+                FallbackReason::ProcessError { .. } => {}
+                other => panic!("Esperava ProcessError, obteve: {:?}", other),
             }
             assert_eq!(record.fallback_mode, DisplayMode::Mirror);
         }
 
         provider.stop().await.ok();
+    }
+
+    #[test]
+    fn test_fallback_explicit_request_and_rom_denied() {
+        let r_rom = FallbackReason::RomDenied {
+            detail: "Xiaomi HyperOS sem autorização de injeção".into(),
+        };
+        assert!(r_rom.user_friendly_message().contains("A ROM ou opções"));
+
+        let r_exp = FallbackReason::ExplicitRequest {
+            detail: "Configuração do usuário solicitou espelhamento".into(),
+        };
+        assert!(r_exp
+            .user_friendly_message()
+            .contains("solicitado explicitamente"));
     }
 
     #[tokio::test]
