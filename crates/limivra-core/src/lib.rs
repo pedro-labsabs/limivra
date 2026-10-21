@@ -2,6 +2,7 @@
 
 pub mod adb;
 pub mod display;
+pub mod provider;
 pub mod scrcpy;
 pub mod session;
 
@@ -12,9 +13,10 @@ pub use adb::{AdbDevice, DeviceStatus};
 pub use display::{
     AndroidDisplayInfo, DeviceProfile, DisplayProbeReport, DisplayProber, VirtualDisplaySupport,
 };
+pub use provider::VirtualDisplayProvider;
 pub use scrcpy::{
-    CapabilityProbeSource, ScrcpyAdapter, ScrcpyCapabilities, ScrcpySessionOptions, ScrcpyVersion,
-    VirtualDisplayConfig,
+    AppLaunchBackend, CapabilityProbeSource, ScrcpyAdapter, ScrcpyCapabilities,
+    ScrcpySessionOptions, ScrcpyVersion, VirtualDisplayConfig,
 };
 pub use session::{SessionController, SessionEvent};
 

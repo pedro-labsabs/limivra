@@ -145,14 +145,24 @@ impl ScrcpyCapabilities {
     }
 }
 
-/// Configurações avançadas opcionais para sessões com display virtual.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// Mecanismo utilizado para lançar o aplicativo alvo na tela virtual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AppLaunchBackend {
+    /// Utiliza a flag nativa `--start-app` do scrcpy no momento da criação do display.
+    #[default]
+    ScrcpyStartApp,
+    /// Utiliza o comando ADB Shell `am start --display <id>`.
+    AdbAmStart,
+}
+
+/// Configurações avançadas para sessões com display virtual.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VirtualDisplayConfig {
     pub width: u32,
     pub height: u32,
     pub dpi: u32,
     #[serde(default)]
-    pub start_app: Option<String>,
+    pub app: Option<String>,
     #[serde(default)]
     pub disable_system_decorations: bool,
     #[serde(default)]
@@ -161,6 +171,48 @@ pub struct VirtualDisplayConfig {
     pub ime_policy: Option<String>,
     #[serde(default)]
     pub flex_display: bool,
+    #[serde(default)]
+    pub launch_backend: AppLaunchBackend,
+}
+
+impl Default for VirtualDisplayConfig {
+    fn default() -> Self {
+        Self {
+            width: 1920,
+            height: 1080,
+            dpi: 240,
+            app: None,
+            disable_system_decorations: false,
+            keep_content_on_destroy: false,
+            ime_policy: None,
+            flex_display: false,
+            launch_backend: AppLaunchBackend::ScrcpyStartApp,
+        }
+    }
+}
+
+impl VirtualDisplayConfig {
+    /// Cria uma configuração com dimensões padrão de área de trabalho (1080p @ 240 DPI).
+    pub fn new(width: u32, height: u32, dpi: u32) -> Self {
+        Self {
+            width,
+            height,
+            dpi,
+            ..Default::default()
+        }
+    }
+
+    /// Define o pacote ou componente a ser lançado no display virtual.
+    pub fn with_app(mut self, app: impl Into<String>) -> Self {
+        self.app = Some(app.into());
+        self
+    }
+
+    /// Define o backend de lançamento de aplicativo.
+    pub fn with_launch_backend(mut self, backend: AppLaunchBackend) -> Self {
+        self.launch_backend = backend;
+        self
+    }
 }
 
 /// Opções globais para execução da sessão scrcpy.
@@ -264,7 +316,7 @@ impl ScrcpyAdapter {
             "-s".to_string(),
             serial.to_string(),
             "--window-title".to_string(),
-            format!("Limivra Desktop ({})", serial),
+            format!("Limivra Desktop ({serial})"),
         ];
 
         if options.stay_awake {
@@ -292,18 +344,18 @@ impl ScrcpyAdapter {
                     return Ok(args);
                 }
 
-                info!(
-                    "Configurando display virtual secundário: {}x{} @ {} DPI",
-                    width, height, dpi
-                );
+                info!("Configurando display virtual secundário: {width}x{height} @ {dpi} DPI");
                 args.push(format!("--new-display={width}x{height}/{dpi}"));
 
                 if let Some(cfg) = &options.virtual_config {
-                    if let Some(app) = &cfg.start_app {
-                        if caps.supports_start_app {
-                            args.push(format!("--start-app={app}"));
-                        } else {
-                            warn!("scrcpy não suporta flag --start-app; ignorando inicialização explícita.");
+                    // Se o lançamento de app foi delegado ao scrcpy
+                    if cfg.launch_backend == AppLaunchBackend::ScrcpyStartApp {
+                        if let Some(app) = &cfg.app {
+                            if caps.supports_start_app {
+                                args.push(format!("--start-app={app}"));
+                            } else {
+                                warn!("scrcpy não suporta flag --start-app; ignorando inicialização explícita via scrcpy.");
+                            }
                         }
                     }
 
@@ -525,11 +577,12 @@ Usage: scrcpy [options]
                 width: 1920,
                 height: 1080,
                 dpi: 240,
-                start_app: Some("com.android.settings".to_string()),
+                app: Some("com.android.settings".to_string()),
                 disable_system_decorations: true,
                 keep_content_on_destroy: true,
                 ime_policy: Some("local".to_string()),
                 flex_display: true,
+                launch_backend: AppLaunchBackend::ScrcpyStartApp,
             }),
         };
 
@@ -555,6 +608,37 @@ Usage: scrcpy [options]
     }
 
     #[test]
+    fn test_build_advanced_arguments_with_am_backend_does_not_inject_start_app() {
+        let help = r#"
+    --new-display[=[<width>x<height>][/<dpi>]]
+    --start-app=name
+"#;
+        let caps = ScrcpyCapabilities::from_help_output(help, None);
+        let mode = DisplayMode::VirtualDisplay {
+            width: 1920,
+            height: 1080,
+            dpi: 240,
+        };
+        let options = ScrcpySessionOptions {
+            stay_awake: false,
+            virtual_config: Some(VirtualDisplayConfig {
+                width: 1920,
+                height: 1080,
+                dpi: 240,
+                app: Some("com.android.settings".to_string()),
+                launch_backend: AppLaunchBackend::AdbAmStart,
+                ..Default::default()
+            }),
+        };
+
+        let args = ScrcpyAdapter::build_arguments_advanced("serial456", mode, &caps, &options)
+            .expect("deve construir args sem start-app quando backend for ADB am");
+
+        assert!(args.contains(&"--new-display=1920x1080/240".to_string()));
+        assert!(!args.iter().any(|a| a.starts_with("--start-app")));
+    }
+
+    #[test]
     fn test_build_advanced_arguments_gracefully_drops_unsupported_flags() {
         // Suporta apenas --new-display, sem start-app ou IME policy
         let help = r#"
@@ -572,11 +656,12 @@ Usage: scrcpy [options]
                 width: 1280,
                 height: 720,
                 dpi: 160,
-                start_app: Some("com.android.settings".to_string()),
+                app: Some("com.android.settings".to_string()),
                 disable_system_decorations: true,
                 keep_content_on_destroy: true,
                 ime_policy: Some("fallback".to_string()),
                 flex_display: true,
+                launch_backend: AppLaunchBackend::ScrcpyStartApp,
             }),
         };
 

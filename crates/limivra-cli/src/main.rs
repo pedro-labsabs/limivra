@@ -2,8 +2,9 @@
 
 use clap::{Parser, Subcommand};
 use limivra_core::{
-    DeviceDiscovery, DeviceStatus, DisplayMode, DisplayProber, ScrcpyAdapter, SessionController,
-    SessionEvent, VirtualDisplaySupport,
+    AppLaunchBackend, DeviceDiscovery, DeviceStatus, DisplayMode, DisplayProber, ScrcpyAdapter,
+    SessionController, SessionEvent, VirtualDisplayConfig, VirtualDisplayProvider,
+    VirtualDisplaySupport,
 };
 use std::sync::Arc;
 
@@ -40,6 +41,14 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         virtual_display: bool,
 
+        /// Pacote ou componente de aplicativo Android a ser lançado no display virtual (ex: com.android.settings)
+        #[arg(long)]
+        app: Option<String>,
+
+        /// Backend de lançamento do aplicativo ('scrcpy' via flag --start-app ou 'am' via ADB shell am start --display <id>)
+        #[arg(long, default_value = "scrcpy")]
+        app_backend: String,
+
         /// Manter o dispositivo acordado enquanto conectado
         #[arg(long, default_value_t = true)]
         stay_awake: bool,
@@ -72,7 +81,7 @@ async fn main() {
                         DeviceStatus::Unknown => "[Desconhecido]",
                     };
                     let model_desc = d.model.as_deref().unwrap_or("Modelo desconhecido");
-                    println!("  • {} ({}) — {}", d.serial, model_desc, status_desc);
+                    println!("  • {} ({model_desc}) — {status_desc}", d.serial);
                 }
             }
             Err(e) => {
@@ -141,12 +150,12 @@ async fn main() {
                                 .map(|f| format!(" @ {f:.0} Hz"))
                                 .unwrap_or_default();
                             println!(
-                                "  • ID {}: \"{}\" — {}x{} ({} DPI){}",
-                                d.id, d.name, d.width, d.height, d.dpi, fps
+                                "  • ID {}: \"{}\" — {}x{} ({} DPI){fps}",
+                                d.id, d.name, d.width, d.height, d.dpi
                             );
                             println!(
-                                "    Tipo: {} | Confiável (TRUSTED): {}",
-                                disp_type, d.is_trusted
+                                "    Tipo: {disp_type} | Confiável (TRUSTED): {}",
+                                d.is_trusted
                             );
                         }
                     }
@@ -195,7 +204,9 @@ async fn main() {
                     println!("\nResultado da Avaliação:");
                     match &report.virtual_display_support {
                         VirtualDisplaySupport::Supported => {
-                            println!("  [SUPORTADO] O ambiente atende aos requisitos documentados para VirtualDisplay.");
+                            println!(
+                                "  [SUPORTADO] O ambiente atende aos requisitos documentados para VirtualDisplay."
+                            );
                         }
                         VirtualDisplaySupport::Unsupported { reason } => {
                             println!("  [NÃO SUPORTADO] {reason}");
@@ -221,6 +232,8 @@ async fn main() {
         Commands::Start {
             serial,
             virtual_display,
+            app,
+            app_backend,
             stay_awake,
         } => {
             println!("Localizando dispositivo Android...");
@@ -253,82 +266,134 @@ async fn main() {
                 );
             }
 
-            let mut mode = if virtual_display {
+            let is_virtual = virtual_display || app.is_some();
+
+            if is_virtual {
                 if !caps.supports_new_display {
                     println!("[AVISO] scrcpy instalado não suporta criação de display virtual (--new-display).");
                     println!("[FALLBACK] Executando em modo espelhamento (Mirror).");
-                    DisplayMode::Mirror
+                    run_mirror_session(&device.serial, &caps, stay_awake).await;
+                    return;
+                }
+
+                let launch_backend = if app_backend.eq_ignore_ascii_case("am") {
+                    AppLaunchBackend::AdbAmStart
                 } else {
-                    DisplayMode::VirtualDisplay {
-                        width: 1920,
-                        height: 1080,
-                        dpi: 240,
+                    AppLaunchBackend::ScrcpyStartApp
+                };
+
+                let config = VirtualDisplayConfig {
+                    width: 1920,
+                    height: 1080,
+                    dpi: 240,
+                    app: app.clone(),
+                    launch_backend,
+                    ..Default::default()
+                };
+
+                if let Some(ref a) = app {
+                    println!("Configurando lançamento do app: '{a}' (backend: {launch_backend:?})");
+                }
+
+                let provider = Arc::new(VirtualDisplayProvider::new());
+                let mut rx = provider.subscribe();
+
+                let prov_clone = Arc::clone(&provider);
+                tokio::spawn(async move {
+                    tokio::signal::ctrl_c().await.ok();
+                    println!(
+                        "\nRecebido sinal de interrupção (Ctrl+C). Encerrando sessão de forma limpa..."
+                    );
+                    prov_clone.stop().await.ok();
+                });
+
+                println!("Inicializando VirtualDisplayProvider...");
+                if let Err(e) = provider
+                    .start(&device.serial, &config, &caps, stay_awake)
+                    .await
+                {
+                    eprintln!("Erro ao iniciar display virtual: {e}");
+                    return;
+                }
+
+                while let Ok(event) = rx.recv().await {
+                    match event {
+                        SessionEvent::StateChanged(s) => {
+                            println!("Estado da Sessão: {s:?}");
+                        }
+                        SessionEvent::ProcessExited(code) => {
+                            println!("Sessão concluída (código de saída: {code:?})");
+                            break;
+                        }
+                        SessionEvent::Error(err) => {
+                            eprintln!("Erro na sessão: {err}");
+                            break;
+                        }
                     }
                 }
             } else {
-                DisplayMode::Mirror
-            };
-
-            let args = match ScrcpyAdapter::build_arguments_with_capabilities(
-                &device.serial,
-                mode,
-                &caps,
-                stay_awake,
-            ) {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("Erro ao construir argumentos: {e}");
-                    return;
-                }
-            };
-
-            // Se os argumentos gerados não contiverem --new-display por fallback interno, ajusta modo
-            if !args.iter().any(|a| a.starts_with("--new-display")) && mode != DisplayMode::Mirror {
-                mode = DisplayMode::Mirror;
-            }
-
-            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            let controller = Arc::new(SessionController::new());
-            let mut rx = controller.subscribe();
-
-            let ctrl_clone = Arc::clone(&controller);
-            tokio::spawn(async move {
-                tokio::signal::ctrl_c().await.ok();
-                println!(
-                    "\nRecebido sinal de interrupção (Ctrl+C). Encerrando sessão de forma limpa..."
-                );
-                ctrl_clone.stop().await.ok();
-            });
-
-            println!("Inicializando sessão de vídeo com argumentos: {args_ref:?}");
-            if let Err(e) = controller
-                .start("scrcpy", &args_ref, &device.serial, mode)
-                .await
-            {
-                eprintln!("Erro ao iniciar sessão: {e}");
-                return;
-            }
-
-            while let Ok(event) = rx.recv().await {
-                match event {
-                    SessionEvent::StateChanged(s) => {
-                        println!("Estado da Sessão: {s:?}");
-                    }
-                    SessionEvent::ProcessExited(code) => {
-                        println!("Sessão concluída (código de saída: {code:?})");
-                        break;
-                    }
-                    SessionEvent::Error(err) => {
-                        eprintln!("Erro na sessão: {err}");
-                        break;
-                    }
-                }
+                run_mirror_session(&device.serial, &caps, stay_awake).await;
             }
         }
         Commands::Doctor => {
             println!("Executando diagnóstico de ambiente Limivra...");
             check_tool("adb");
             check_scrcpy().await;
+        }
+    }
+}
+
+async fn run_mirror_session(
+    serial: &str,
+    caps: &limivra_core::ScrcpyCapabilities,
+    stay_awake: bool,
+) {
+    let args = match ScrcpyAdapter::build_arguments_with_capabilities(
+        serial,
+        DisplayMode::Mirror,
+        caps,
+        stay_awake,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Erro ao construir argumentos: {e}");
+            return;
+        }
+    };
+
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let controller = Arc::new(SessionController::new());
+    let mut rx = controller.subscribe();
+
+    let ctrl_clone = Arc::clone(&controller);
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        println!("\nRecebido sinal de interrupção (Ctrl+C). Encerrando sessão de forma limpa...");
+        ctrl_clone.stop().await.ok();
+    });
+
+    println!("Inicializando sessão de espelhamento (Mirror) com argumentos: {args_ref:?}");
+    if let Err(e) = controller
+        .start("scrcpy", &args_ref, serial, DisplayMode::Mirror)
+        .await
+    {
+        eprintln!("Erro ao iniciar sessão: {e}");
+        return;
+    }
+
+    while let Ok(event) = rx.recv().await {
+        match event {
+            SessionEvent::StateChanged(s) => {
+                println!("Estado da Sessão: {s:?}");
+            }
+            SessionEvent::ProcessExited(code) => {
+                println!("Sessão concluída (código de saída: {code:?})");
+                break;
+            }
+            SessionEvent::Error(err) => {
+                eprintln!("Erro na sessão: {err}");
+                break;
+            }
         }
     }
 }
@@ -413,17 +478,30 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parsing_start_with_virtual_display() {
-        let cli = Cli::try_parse_from(["limivra", "start", "--virtual-display", "--stay-awake"])
-            .expect("deve parsear start");
+    fn test_cli_parsing_start_with_virtual_display_and_app() {
+        let cli = Cli::try_parse_from([
+            "limivra",
+            "start",
+            "--virtual-display",
+            "--app",
+            "com.android.settings",
+            "--app-backend",
+            "am",
+            "--stay-awake",
+        ])
+        .expect("deve parsear start com app e backend am");
         match cli.command {
             Commands::Start {
                 serial,
                 virtual_display,
+                app,
+                app_backend,
                 stay_awake,
             } => {
                 assert_eq!(serial, None);
                 assert!(virtual_display);
+                assert_eq!(app.as_deref(), Some("com.android.settings"));
+                assert_eq!(app_backend, "am");
                 assert!(stay_awake);
             }
             _ => panic!("Esperado comando Start"),
