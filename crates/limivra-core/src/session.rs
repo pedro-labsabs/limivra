@@ -80,6 +80,11 @@ impl SessionController {
             Err(e) => {
                 let err_msg = format!("Falha ao iniciar processo '{command}': {e}");
                 *state_guard = SessionState::Disconnected;
+                // Publish the rollback before the error so projections agree with
+                // current_state() and retain the failure indication afterward.
+                let _ = self
+                    .event_sender
+                    .send(SessionEvent::StateChanged(SessionState::Disconnected));
                 let _ = self.event_sender.send(SessionEvent::Error(err_msg.clone()));
                 return Err(CoreError::DependencyMissing(err_msg));
             }

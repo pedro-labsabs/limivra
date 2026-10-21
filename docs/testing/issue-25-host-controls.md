@@ -82,3 +82,36 @@ falhas de execução. Não há aprovação de QA nem fechamento da Issue #25.
 
 Rollback: reverter somente o commit desta slice. Não é necessária alteração
 no telefone nem encerramento de processos de terceiros.
+
+## Revisão P2 — falha real de spawn (2026-10-21)
+
+Parecer independente reportado pelo Orquestrador: NEEDS_REVISION. O controlador
+retornava a Disconnected após falha de spawn, mas publicava apenas Error depois
+de Connecting; a projeção permanecia Connecting.
+
+Correção limitada a `SessionController::start`: publicar
+`StateChanged(Disconnected)` antes de Error na falha de spawn. Isso permite que
+observadores recebam o rollback confirmado e conservem a indicação de erro.
+Não foi necessário inferir desconexão a partir de erros genéricos no projetor;
+erros em Active continuam preservando modo/pausa confirmados.
+
+Teste `real_spawn_failure_keeps_projection_in_sync_with_controller` em
+`crates/limivra-core/tests/host_controls.rs`: usa SessionController real com
+caminho absoluto de executável impossível (`/dev/null/limivra-missing-executable`),
+assina antes de start e consome os eventos reais. Verifica Connecting inicial,
+erro de spawn, Disconnected no controlador e na projeção, erro visível, ausência
+de modo/pausa e bloqueio de ações. Não depende de PATH ou aparelho.
+
+- RED: `cargo test -p limivra-core --test host_controls real_spawn_failure --locked --offline`
+  retornou 101; projeção Connecting em vez de Disconnected.
+- GREEN: mesmo comando retornou 0 após correção.
+- `cargo test --workspace --locked --offline`: exit 0, 41 testes passaram
+  (3 CLI, 31 core, 7 host controls).
+- `cargo check --workspace --all-targets --locked --offline`: exit 0.
+- `cargo fmt --all -- --check` e `git diff --check`: exit 0.
+- `cargo clippy -p limivra-core --lib --test host_controls --locked --offline -- -D warnings`: exit 0.
+- Clippy estrito global: exit 101, os mesmos seis lints preexistentes de
+  provider.rs documentados acima; arquivo preservado.
+
+Resultado: correção pronta para reavaliação independente; não constitui
+aprovação de QA. Rollback: reverter somente o commit desta revisão.

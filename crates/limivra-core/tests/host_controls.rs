@@ -169,3 +169,47 @@ fn fallback_notification_waits_for_confirmed_state_and_errors_are_redacted() {
         Err(ControlError::RequiresVirtualDisplay)
     );
 }
+
+#[tokio::test]
+async fn real_spawn_failure_keeps_projection_in_sync_with_controller() {
+    let controller = limivra_core::SessionController::new();
+    let mut events = controller.subscribe();
+    let mut controls = HostControls::default();
+    // An absolute path below a file cannot resolve to an executable, independent of PATH.
+    let result = controller
+        .start(
+            "/dev/null/limivra-missing-executable",
+            &[],
+            "private-device-identifier",
+            DisplayMode::Mirror,
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(limivra_core::CoreError::DependencyMissing(_))
+    ));
+    assert_eq!(controller.current_state().await, SessionState::Disconnected);
+
+    let connecting = events.try_recv().expect("Connecting event");
+    assert_eq!(
+        connecting,
+        SessionEvent::StateChanged(SessionState::Connecting)
+    );
+    controls.observe(&connecting);
+    assert_eq!(controls.connection(), ConnectionStatus::Connecting);
+    let mut saw_error = false;
+    while let Ok(event) = events.try_recv() {
+        saw_error |= matches!(&event, SessionEvent::Error(_));
+        controls.observe(&event);
+    }
+    assert!(saw_error);
+    assert_eq!(controls.connection(), ConnectionStatus::Disconnected);
+    assert!(controls.has_error());
+    assert_eq!(controls.mode(), None);
+    assert_eq!(controls.video_paused(), None);
+    assert_eq!(
+        controls.request(ControlAction::Disconnect),
+        Err(ControlError::NotActive)
+    );
+    assert!(!format!("{controls:?}").contains("private-device-identifier"));
+}
