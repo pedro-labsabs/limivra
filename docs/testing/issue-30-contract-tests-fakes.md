@@ -20,7 +20,7 @@ scrcpy real.
 | Saída inesperada e término por sinal | Filho shell com PID marker | `cargo test -p limivra-core --locked --offline --test session` | Códigos 1, 7 e 127 preservados; SIGTERM projetado como término; estado `Terminated` |
 | Stop/reaping idempotente e sem afetar outro processo | Dois filhos independentes com PID conhecido | `cargo test -p limivra-core --locked --offline --test session` | Stop mata/recolhe apenas o filho próprio; segunda chamada continua desconectada |
 | Vinte ciclos rápidos start/stop | Filho identificado por PID e processo sentinela | `cargo test -p limivra-core --locked --offline --test session rapid_start_stop_cycles_reap_every_owned_child` | Todos os filhos próprios recolhidos; sem evento tardio de término; sentinela preservado |
-| Teardown em falha de teste antes do registro explícito do PID | Fake publica PID de raiz automaticamente; fixture também rastreia PIDs observados | `cargo test -p limivra-core --locked --offline --test session dropping_common_fixture_terminates_child_before_pid_registration` | O `Drop` da fixture sinaliza apenas o fake em seu diretório; o proprietário aguarda/recolhe o filho |
+| Teardown em falha de teste antes da limpeza explícita | Fixture mantém o handle do filho que criou e rastreia PIDs publicados pelo fake | `cargo test -p limivra-core --locked --offline --test session dropping_common_fixture_kills_and_reaps_owned_child` | O `Drop` termina e recolhe seu filho antes de remover o diretório privado |
 | Parsing ADB, dumpsys e versão scrcpy | Strings sintéticas truncadas, incompletas, fora de ordem, com U+FFFD e linhas longas | `cargo test -p limivra-core --locked --offline --test parsing_contracts` | Nenhum panic; registros incompletos/linhas acima de 16 KiB não viram resposta confiável |
 | Executor limitado e status de processo | `/bin/sh`, `/bin/sleep`, `/usr/bin/head`, PID markers e descendente mantendo pipe aberto | `cargo test -p limivra-core --lib --locked --offline process::tests` | Exit code preservado; timeout, cancelamento e overflow encerram o grupo privado e recolhem o filho direto; os testes confirmam que os PIDs descendentes deixam de existir |
 | Respostas UTF-8 inválidas e limites existentes | Fakes ADB da suíte launcher/Wi-Fi | `cargo test -p limivra-core --locked --offline --test launcher_runner --test wifi_runner` | Resposta inválida falha fechada; saídas excedentes não são aceitas como prefixo |
@@ -77,7 +77,10 @@ scrcpy real.
   overflow e código de saída.
 - RED/GREEN do teardown da fixture: o cenário de regressão cobre a remoção de
   filho ainda ativo quando o teste termina antes de chamar `wait_for_pid`;
-  `Drop` lê somente o marcador privado da própria fixture e sinaliza esse PID.
+  para filhos iniciados pela fixture, `Drop` sinaliza se necessário, aguarda o
+  término e recolhe o processo antes de remover o diretório privado. Para PIDs
+  registrados por runners externos, a fixture mantém a sinalização restrita ao
+  marcador dentro do próprio diretório.
 - Durante a verificação foram corrigidas duas corridas em fixtures existentes:
   prazo Wi-Fi insuficiente para inicialização do fake e fechamento de stdin sem
   dados sendo classificado como `Io` quando o fake terminava rápido. Os testes

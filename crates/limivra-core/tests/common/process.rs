@@ -18,6 +18,7 @@ pub struct Fixture {
     executable: PathBuf,
     active_pids: Mutex<std::collections::HashSet<u32>>,
     reaped_pids: Mutex<std::collections::HashSet<u32>>,
+    owned_children: Mutex<Vec<std::process::Child>>,
 }
 
 impl Fixture {
@@ -47,11 +48,23 @@ impl Fixture {
             executable,
             active_pids: Mutex::new(std::collections::HashSet::new()),
             reaped_pids: Mutex::new(std::collections::HashSet::new()),
+            owned_children: Mutex::new(Vec::new()),
         }
     }
 
     pub fn path(&self) -> &Path {
         &self.executable
+    }
+
+    // This helper is used by the session integration target; other targets
+    // compile the shared module independently and therefore do not call it.
+    #[allow(dead_code)]
+    pub fn spawn(&self) -> io::Result<u32> {
+        let child = std::process::Command::new(&self.executable).spawn()?;
+        let pid = child.id();
+        self.owned_children.lock().unwrap().push(child);
+        self.active_pids.lock().unwrap().insert(pid);
+        Ok(pid)
     }
 
     pub fn pid_file(&self, name: &str) -> PathBuf {
@@ -115,6 +128,14 @@ impl Drop for Fixture {
                 unsafe {
                     libc::kill(pid as libc::pid_t, libc::SIGKILL);
                 }
+            }
+        }
+        if let Ok(children) = self.owned_children.get_mut() {
+            for child in children {
+                if matches!(child.try_wait(), Ok(None)) {
+                    let _ = child.kill();
+                }
+                let _ = child.wait();
             }
         }
         let _ = fs::remove_dir_all(&self.root);
