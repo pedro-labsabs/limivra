@@ -137,3 +137,114 @@ O implementador não auditou sua própria entrega. A Issue #27 não foi fechada;
 próximo gate: convocação de limivra-qa pelo Orquestrador com contexto limpo.
 Rollback: reverter somente o commit desta slice; encerrar apenas recursos
 privados próprios, sem apagar chaves nem desfazer confiança no telefone.
+
+## Revisão de QA-27-01 e QA-27-02 — 2026-10-21
+
+Relatório independente recebido do Orquestrador: REQUEST_CHANGES sobre
+`e9a3a3e`; reprodução lida em `/tmp/limivra-qa-27-evidence/audit-report.md`.
+Os artefatos e a worktree do QA foram preservados. Esta seção registra reparo
+e verificação de desenvolvimento, não reauditoria ou aprovação independente.
+
+### QA-27-01: recuperação com transporte ausente/recusa transitória
+
+O runner agora classifica como Offline somente mensagens completas reconhecidas
+para o endpoint exato da requisição:
+
+- Probe: `error: device '<endpoint>' not found`, além de `error: device offline`.
+- Connect: `failed to connect to '<endpoint>': Connection refused`.
+
+Essas classificações funcionam no caminho de exit não zero e no caminho de
+resposta semântica com exit zero. Cada mensagem deve ocupar um único stream,
+sem outro diagnóstico ou conteúdo adicional. Não foi adicionado match genérico
+por `not found` ou `failed to connect`. Outro endpoint, razão desconhecida e
+texto extra continuam falhando fechados. Unauthorized tem precedência sobre
+qualquer classificação transitória e nunca habilita retry.
+
+No controlador, um único predicado de elegibilidade mantém a admissão em
+Recovering e as tentativas alinhadas: somente Offline/Timeout. A política de
+consentimento, orçamento e máximo de três tentativas permanece restrita.
+
+Regressões:
+
+- `disappeared_target_and_exact_connection_refusal_are_recoverable` cobre alvo
+  ausente e recusa em stdout exit 0 / stderr exit 1.
+- `unknown_other_target_and_authorization_failures_are_not_retried_as_offline`
+  cobre alvo diferente, mensagem desconhecida/adicional e Unauthorized combinado
+  com texto de recusa. A API existente representa Unauthorized em resposta com
+  exit zero como `Ok(AdbReply::Unauthorized)`; o controlador rejeita essa resposta.
+- `actual_runner_recovers_disappeared_target_with_backoff_without_pair_replay`
+  usa WifiController + PrivateAdbRunner + subprocesso falso: pair → conexão
+  confirmada → desaparecimento → Recovering → duas recusas → reconexão na
+  terceira tentativa. Verifica eventos de tentativas 1/2/3, quatro connects no
+  total e somente um pair. Esperas reais acumulam pelo menos 7 s, com timeout de
+  teste 20 s; o teste existente com relógio pausado comprova os atrasos exatos
+  1/2/4 s, sem misturar relógio pausado com I/O do sistema operacional.
+
+RED: `cargo test -p limivra-core --test wifi_runner disappeared --locked --offline`
+retornou 101, dois testes falharam: CommandFailed em vez de Offline e Failed em
+vez de Recovering. GREEN após reparo: mesmo comando exit 0, dois testes passaram.
+
+### QA-27-02: preflight obrigatório em cada lançamento
+
+Presença, arquivo regular sem symlink, proprietário e permissões da chave
+`.android/adbkey` agora são revalidados em um preflight central. Todos os
+comandos, inclusive help, daemon inicial/reinício, clientes e cleanup via
+subprocesso, passam por esse gate imediatamente antes de serem lançados.
+A verificação no início de ensure_server também cobre reutilização de daemon.
+
+A configuração registra somente metadados da chave aprovada (device/inode,
+tamanho, mtime/ctime com nanossegundos), sem bytes, hash ou derivação de chave.
+Troca de arquivo/alteração em uso observada nesses metadados causa
+UnsafeConfiguration: é necessário criar outro runner e efetuar novo pareamento
+consentido. Não há adoção automática de identidade nova, regeneração ou store
+alternativo. Isso não é selo criptográfico nem lock do OS: o consumidor deve
+impedir alterações concorrentes enquanto o processo externo usa os caminhos.
+
+Se o armazenamento se tornar inseguro, nem o cliente kill-server é lançado.
+Cleanup usa kill/wait do handle existente e verifica/removerá somente seu socket
+sem listener. Falha de coleta/verificação continua CleanupFailed; um cleanup
+bem-sucedido conserva UnsafeConfiguration como causa da operação bloqueada.
+
+Regressões:
+
+- `mandatory_key_is_revalidated_after_construction_before_any_process`: remoção,
+  chmod inseguro, substituição, alteração in-place e troca por diretório após
+  new(); contador de lançamentos permanece ausente.
+- `key_disappearing_between_help_daemon_and_client_blocks_next_launch`: remoção
+  por help impede daemon; remoção antes do listener ficar pronto impede cliente.
+  Nenhum cliente de cleanup é lançado sem chave; daemon próprio é recolhido.
+- `key_removed_before_reuse_or_restart_denies_client_and_new_daemon`: remoção com
+  daemon ativo ou após shutdown impede reutilização/reinício sem novo subprocesso.
+
+RED: `cargo test -p limivra-core --test wifi_runner key_ --locked --offline`
+retornou 101: três regressões receberam Ok(Device) em vez de UnsafeConfiguration.
+GREEN após reparo: mesmo comando exit 0, quatro testes passaram (inclui um
+preexistente). O log sintético de lançamentos existe somente nas fixtures,
+fora do produto, e não contém código de pareamento.
+
+### Verificação final desta revisão
+
+| Comando | Resultado |
+| --- | --- |
+| `cargo test --workspace --locked --offline` | exit 0; 80 testes passaram, incluindo 18 wifi_runner (seis novos) |
+| `cargo check --workspace --all-targets --locked --offline` | exit 0 |
+| `cargo clippy -p limivra-core --lib --test wifi --test wifi_runner --locked --offline -- -D warnings` | exit 0 |
+| `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 101; mesmos seis lints herdados em provider.rs |
+| `cargo fmt --all -- --check` | exit 0 |
+| `git diff --check` | exit 0 |
+
+Registro de execução intermediária: `false_success_and_echoed_secrets_never_escape_as_errors`
+retornou Io uma vez durante execução paralela dos alvos wifi/wifi_runner; a
+reexecução isolada e a suíte workspace final passaram. Causa desse Io não foi
+determinada; não foi suprimido nem alterado o teste para aceitar Io. Uma asserção
+nova sobre Unauthorized também foi ajustada à representação tipada existente,
+sem tornar autorização negada elegível para retry. Reauditoria deve considerar
+a observação intermitente, além dos dois reparos funcionais.
+
+Arquivos de produto alterados: somente wifi.rs e wifi/adb_runner.rs. Testes e
+esta evidência atualizados; provider.rs preservado, sem supressões de Clippy.
+Nenhum ADB/telefone/rede real foi utilizado. Gates físicos e limitações de
+backend permanecem UNTESTED conforme seção anterior. Pronto para reauditoria
+independente pelo limivra-qa; nenhum parecer de aprovação foi emitido pelo autor.
+Rollback desta revisão: reverter somente seu commit de reparo, preservando a
+entrega original, os ancestrais e os artefatos independentes de QA.

@@ -47,6 +47,7 @@ assert os.environ.get('ADB_EMU') == '0'
 assert not any(k in os.environ for k in ['ADB_TRACE','ANDROID_SERIAL','ADB_SERVER_SOCKET','ADB_VENDOR_KEYS','ANDROID_ADB_SERVER_PORT'])
 assert os.environ.get('HOME') == str(root/'home')
 assert not any('123456' in s for s in a)
+with (root/'launches').open('a') as out: out.write(' '.join(a)+'\n')
 if a == ['help']:
     print('-L SOCKET pair server nodaemon')
     sys.exit(0)
@@ -409,5 +410,228 @@ async fn offline_and_unauthorized_are_typed_for_recovery_policy() {
             Err(expected)
         );
         runner.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn disappeared_target_and_exact_connection_refusal_are_recoverable() {
+    for (kind, body) in [
+        (RequestKind::Probe, "print(\"error: device '192.168.1.9:4321' not found\",file=sys.stderr); sys.exit(1)"),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': Connection refused\")"),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': Connection refused\",file=sys.stderr); sys.exit(1)"),
+    ] {
+        let f = Fixture::new(body);
+        let runner = f.runner();
+        let result = runner.run(request(kind), Instant::now() + Duration::from_secs(3), Cancellation::default()).await;
+        runner.shutdown().await.unwrap();
+        assert_eq!(result, Err(WifiError::Offline));
+    }
+}
+
+#[tokio::test]
+async fn unknown_other_target_and_authorization_failures_are_not_retried_as_offline() {
+    for (kind, body, expected) in [
+        (RequestKind::Probe, "print(\"error: device '192.168.1.10:4321' not found\",file=sys.stderr); sys.exit(1)", WifiError::CommandFailed),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.10:4321': Connection refused\")", WifiError::UnexpectedReply),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': mystery error\")", WifiError::UnexpectedReply),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': Connection refused\\nextra output\")", WifiError::UnexpectedReply),
+        (RequestKind::Connect, "print(\"failed to connect to '192.168.1.9:4321': Connection refused\"); print('unauthorized',file=sys.stderr)", WifiError::Unauthorized),
+    ] {
+        let f = Fixture::new(body); let runner = f.runner();
+        let result = runner.run(request(kind), Instant::now() + Duration::from_secs(3), Cancellation::default()).await;
+        runner.shutdown().await.unwrap();
+        assert_eq!(result, if expected == WifiError::Unauthorized {
+            Ok(AdbReply::Unauthorized)
+        } else { Err(expected) });
+    }
+}
+
+#[tokio::test]
+async fn actual_runner_recovers_disappeared_target_with_backoff_without_pair_replay() {
+    let f = Fixture::new(
+        r#"if a[0] == 'pair':
+    assert sys.stdin.readline() == '123456\n'
+    with (root/'pairs').open('a') as out: out.write('pair\n')
+    print('Successfully paired to 192.168.1.9:1234 [guid=fixture]')
+elif a[0] == 'connect':
+    marker=root/'connects'
+    count=int(marker.read_text())+1 if marker.exists() else 1
+    marker.write_text(str(count))
+    if count in [2,3]: print("failed to connect to '192.168.1.9:4321': Connection refused")
+    else: print('connected to 192.168.1.9:4321')
+elif a[0] == '-s':
+    marker=root/'probes'
+    count=int(marker.read_text())+1 if marker.exists() else 1
+    marker.write_text(str(count))
+    if count == 2:
+        print("error: device '192.168.1.9:4321' not found",file=sys.stderr); sys.exit(1)
+    print('device')
+"#,
+    );
+    let c = std::sync::Arc::new(WifiController::new(
+        f.runner(),
+        LocalEndpoint::parse("192.168.1.9:4321").unwrap(),
+    ));
+    c.pair(
+        LocalEndpoint::parse("192.168.1.9:1234").unwrap(),
+        PairingCode::parse("123456").unwrap(),
+        Consent::Granted,
+    )
+    .await
+    .unwrap();
+    c.connect(Consent::Granted, Consent::Granted).await.unwrap();
+    let result = c.check_link().await;
+    let state = c.state();
+    if state != WifiState::Recovering {
+        c.cancel().await.unwrap();
+        panic!("expected Recovering, got {state:?}, probe {result:?}");
+    }
+    assert_eq!(result, Err(WifiError::Offline));
+    // Keep the real I/O clock here. The mock-clock test in wifi.rs separately
+    // pins exact 1/2/4 delays without mixing paused time and OS subprocess I/O.
+    let start = Instant::now();
+    let mut events = c.subscribe();
+    let result = tokio::time::timeout(Duration::from_secs(20), c.recover(Consent::Granted))
+        .await
+        .unwrap();
+    assert!(Instant::now() - start >= Duration::from_secs(7));
+    let attempts: Vec<_> = std::iter::from_fn(|| events.try_recv().ok())
+        .filter_map(|e| {
+            if let WifiEvent::RecoveryAttempt(n) = e {
+                Some(n)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(attempts, [1, 2, 3]);
+    let state = c.state();
+    c.cancel().await.unwrap();
+    assert_eq!(result, Ok(()));
+    assert_eq!(state, WifiState::Connected);
+    assert_eq!(
+        std::fs::read_to_string(f.root.join("pairs")).unwrap(),
+        "pair\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(f.root.join("connects")).unwrap(),
+        "4"
+    );
+}
+
+#[tokio::test]
+async fn mandatory_key_is_revalidated_after_construction_before_any_process() {
+    for change in 0..5 {
+        let f = Fixture::new("print('device')");
+        let runner = f.runner();
+        let key = f.home.join(".android/adbkey");
+        match change {
+            0 => std::fs::remove_file(&key).unwrap(),
+            1 => std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap(),
+            2 => {
+                std::fs::rename(&key, f.root.join("saved-fixture-key")).unwrap();
+                std::fs::write(&key, "replacement fixture identity").unwrap();
+                std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+            }
+            3 => std::fs::write(&key, "changed in place").unwrap(),
+            _ => {
+                std::fs::remove_file(&key).unwrap();
+                std::fs::create_dir(&key).unwrap();
+                std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+        }
+        let result = runner
+            .run(
+                request(RequestKind::Probe),
+                Instant::now() + Duration::from_secs(3),
+                Cancellation::default(),
+            )
+            .await;
+        runner.shutdown().await.unwrap();
+        assert_eq!(
+            result,
+            Err(WifiError::UnsafeConfiguration),
+            "change {change}"
+        );
+        assert!(
+            !f.root.join("launches").exists(),
+            "a subprocess was launched for change {change}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn key_disappearing_between_help_daemon_and_client_blocks_next_launch() {
+    for boundary in ["help", "daemon"] {
+        let f = Fixture::new("print('device')");
+        let script = std::fs::read_to_string(&f.adb).unwrap();
+        let script = if boundary == "help" {
+            script.replace(
+                "if a == ['help']:",
+                "if a == ['help']:\n    (root/'home/.android/adbkey').unlink()",
+            )
+        } else {
+            script.replace(
+                "s.listen()",
+                "(root/'home/.android/adbkey').unlink(); s.listen()",
+            )
+        };
+        std::fs::write(&f.adb, script).unwrap();
+        let runner = f.runner();
+        let result = runner
+            .run(
+                request(RequestKind::Probe),
+                Instant::now() + Duration::from_secs(3),
+                Cancellation::default(),
+            )
+            .await;
+        runner.shutdown().await.unwrap();
+        assert_eq!(
+            result,
+            Err(WifiError::UnsafeConfiguration),
+            "boundary {boundary}"
+        );
+        let launches = std::fs::read_to_string(f.root.join("launches")).unwrap();
+        assert!(!launches.contains("get-state") && !launches.contains("kill-server"));
+        if boundary == "help" {
+            assert_eq!(launches, "help\n");
+        } else {
+            f.assert_reaped("server.pid");
+        }
+    }
+}
+
+#[tokio::test]
+async fn key_removed_before_reuse_or_restart_denies_client_and_new_daemon() {
+    for restart in [false, true] {
+        let f = Fixture::new("print('device')");
+        let runner = f.runner();
+        runner
+            .run(
+                request(RequestKind::Probe),
+                Instant::now() + Duration::from_secs(3),
+                Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        if restart {
+            runner.shutdown().await.unwrap();
+        }
+        let before = std::fs::read_to_string(f.root.join("launches")).unwrap();
+        std::fs::remove_file(f.home.join(".android/adbkey")).unwrap();
+        let result = runner
+            .run(
+                request(RequestKind::Probe),
+                Instant::now() + Duration::from_secs(3),
+                Cancellation::default(),
+            )
+            .await;
+        runner.shutdown().await.unwrap();
+        assert_eq!(result, Err(WifiError::UnsafeConfiguration));
+        assert_eq!(
+            std::fs::read_to_string(f.root.join("launches")).unwrap(),
+            before
+        );
+        f.assert_reaped("server.pid");
     }
 }

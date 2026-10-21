@@ -20,6 +20,17 @@ struct Configuration {
     home: PathBuf,
     runtime: PathBuf,
     socket: PathBuf,
+    key: KeyIdentity,
+}
+// Metadata only: no key bytes, digest or credential derivative is retained.
+// Replacement or in-place changes require a new runner and fresh pairing.
+#[derive(PartialEq, Eq)]
+struct KeyIdentity {
+    device: u64,
+    inode: u64,
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
 }
 #[derive(Default)]
 struct Server {
@@ -28,6 +39,10 @@ struct Server {
     checked: bool,
 }
 /// No raw subprocess output or pairing credentials are exposed by this runner.
+/// The approved key's identity/metadata are pinned until this runner is dropped;
+/// replacement or in-place change requires a new runner and fresh pairing.
+/// Preflight checks are not an OS lock: the caller must protect the store from
+/// concurrent modification while the external ADB process is using it.
 #[derive(Clone)]
 pub struct PrivateAdbRunner {
     config: Arc<Configuration>,
@@ -50,11 +65,7 @@ impl PrivateAdbRunner {
         secure_directory(&runtime)?;
         secure_directory(&home.join(".android"))?;
         secure_store(&home.join(".android"))?;
-        let key = std::fs::symlink_metadata(home.join(".android/adbkey"))
-            .map_err(|_| WifiError::UnsafeConfiguration)?;
-        if !key.is_file() {
-            return Err(WifiError::UnsafeConfiguration);
-        }
+        let key = secure_key(&home)?;
         // Canonical paths pin parent symlinks before any subprocess is launched.
         let home = std::fs::canonicalize(home).map_err(|_| WifiError::UnsafeConfiguration)?;
         let runtime = std::fs::canonicalize(runtime).map_err(|_| WifiError::UnsafeConfiguration)?;
@@ -68,11 +79,24 @@ impl PrivateAdbRunner {
                 home,
                 runtime,
                 socket,
+                key,
             }),
             server: Arc::new(Mutex::new(Server::default())),
         })
     }
-    fn command(&self) -> Command {
+    fn preflight(&self) -> Result<(), WifiError> {
+        secure_directory(&self.config.runtime)?;
+        secure_directory(&self.config.home)?;
+        secure_store(&self.config.home.join(".android"))?;
+        if secure_key(&self.config.home)? != self.config.key {
+            return Err(WifiError::UnsafeConfiguration);
+        }
+        Ok(())
+    }
+    fn command(&self) -> Result<Command, WifiError> {
+        // Every launch, including help, daemon startup/restart and clients,
+        // rechecks the required key immediately before building the command.
+        self.preflight()?;
         let mut command = Command::new(&self.config.adb);
         command
             .env_clear()
@@ -84,7 +108,7 @@ impl PrivateAdbRunner {
             .env("ADB_EMU", "0")
             .current_dir(&self.config.runtime)
             .kill_on_drop(true);
-        command
+        Ok(command)
     }
     fn socket_argument(&self) -> String {
         format!("localfilesystem:{}", self.config.socket.display())
@@ -96,9 +120,7 @@ impl PrivateAdbRunner {
         cancel: &Cancellation,
         abandoned: &Cancellation,
     ) -> Result<(), WifiError> {
-        secure_directory(&self.config.runtime)?;
-        secure_directory(&self.config.home)?;
-        secure_store(&self.config.home.join(".android"))?;
+        self.preflight()?;
         if let Some(child) = state.child.as_mut() {
             if child.try_wait().map_err(|_| WifiError::Io)?.is_some() {
                 return Err(WifiError::Offline);
@@ -109,9 +131,9 @@ impl PrivateAdbRunner {
             return Err(WifiError::UnsafeConfiguration);
         }
         if !state.checked {
-            let mut help = self.command();
+            let mut help = self.command()?;
             help.arg("help");
-            let (out, _) = execute(help, None, deadline, cancel, abandoned).await?;
+            let (out, _) = execute(help, None, deadline, cancel, abandoned, None).await?;
             let text = std::str::from_utf8(&out).map_err(|_| WifiError::DependencyUnsupported)?;
             if !text.contains("-L") || !text.contains("pair") || !text.contains("nodaemon") {
                 return Err(WifiError::DependencyUnsupported);
@@ -119,7 +141,7 @@ impl PrivateAdbRunner {
             state.checked = true;
         }
         let child = self
-            .command()
+            .command()?
             .args(["-L", &self.socket_argument(), "server", "nodaemon"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -177,7 +199,7 @@ impl PrivateAdbRunner {
             }
             self.ensure_server(&mut state, deadline, &cancel, &abandoned)
                 .await?;
-            let mut command = self.command();
+            let mut command = self.command()?;
             command.args(["-L", &self.socket_argument()]);
             let endpoint = request.endpoint.argument();
             match request.kind {
@@ -194,7 +216,15 @@ impl PrivateAdbRunner {
                     command.args(["disconnect", &endpoint]);
                 }
             }
-            let (out, err) = execute(command, request.code, deadline, &cancel, &abandoned).await?;
+            let (out, err) = execute(
+                command,
+                request.code,
+                deadline,
+                &cancel,
+                &abandoned,
+                Some((request.kind, &endpoint)),
+            )
+            .await?;
             if state
                 .child
                 .as_mut()
@@ -217,17 +247,23 @@ impl PrivateAdbRunner {
         // ADB clients can restart a dead daemon. Stop by our private socket too,
         // never by the global/default server, then reap the foreground handle.
         let protocol = if state.owns_socket {
-            let mut stop = self.command();
-            stop.args(["-L", &self.socket_argument(), "kill-server"]);
-            execute(
-                stop,
-                None,
-                Instant::now() + Duration::from_secs(2),
-                &Cancellation::default(),
-                &Cancellation::default(),
-            )
-            .await
-            .map(|_| ())
+            if let Ok(mut stop) = self.command() {
+                stop.args(["-L", &self.socket_argument(), "kill-server"]);
+                execute(
+                    stop,
+                    None,
+                    Instant::now() + Duration::from_secs(2),
+                    &Cancellation::default(),
+                    &Cancellation::default(),
+                    None,
+                )
+                .await
+                .map(|_| ())
+            } else {
+                // Unsafe storage must not launch even a cleanup client: only
+                // kill/wait the existing owned handle, then verify the socket.
+                Ok(())
+            }
         } else {
             Ok(())
         };
@@ -286,6 +322,24 @@ impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         self.0.cancel();
     }
+}
+
+fn secure_key(home: &Path) -> Result<KeyIdentity, WifiError> {
+    let key = std::fs::symlink_metadata(home.join(".android/adbkey"))
+        .map_err(|_| WifiError::UnsafeConfiguration)?;
+    let uid = std::fs::metadata("/proc/self")
+        .map_err(|_| WifiError::UnsafeConfiguration)?
+        .uid();
+    if !key.is_file() || key.uid() != uid || key.permissions().mode() & 0o077 != 0 {
+        return Err(WifiError::UnsafeConfiguration);
+    }
+    Ok(KeyIdentity {
+        device: key.dev(),
+        inode: key.ino(),
+        size: key.len(),
+        modified: (key.mtime(), key.mtime_nsec()),
+        changed: (key.ctime(), key.ctime_nsec()),
+    })
 }
 
 fn secure_directory(path: &Path) -> Result<(), WifiError> {
@@ -352,6 +406,7 @@ async fn execute(
     deadline: Instant,
     cancel: &Cancellation,
     abandoned: &Cancellation,
+    context: Option<(RequestKind, &str)>,
 ) -> Result<(Vec<u8>, Vec<u8>), WifiError> {
     if cancel.is_cancelled() || abandoned.is_cancelled() {
         return Err(WifiError::Cancelled);
@@ -383,7 +438,8 @@ async fn execute(
             if has_unauthorized(&out) || has_unauthorized(&err) {
                 return Err(WifiError::Unauthorized);
             }
-            if std::str::from_utf8(&err).is_ok_and(|text| text.trim() == "error: device offline") {
+            if context.is_some_and(|(kind, endpoint)| recoverable_reply(kind, endpoint, &out, &err))
+            {
                 return Err(WifiError::Offline);
             }
             return Err(WifiError::CommandFailed);
@@ -422,6 +478,9 @@ fn parse_reply(
     if has_unauthorized(out) || has_unauthorized(err) {
         return Ok(AdbReply::Unauthorized);
     }
+    if recoverable_reply(kind, endpoint, out, err) {
+        return Err(WifiError::Offline);
+    }
     let text = std::str::from_utf8(out)
         .map_err(|_| WifiError::UnexpectedReply)?
         .trim();
@@ -452,5 +511,29 @@ fn parse_reply(
             Ok(AdbReply::Disconnected)
         }
         _ => Err(WifiError::UnexpectedReply),
+    }
+}
+
+/// Recognize only single, endpoint-bound backend failures. Unknown text, extra
+/// diagnostics, a different target, and pairing/authentication errors stay closed.
+fn recoverable_reply(kind: RequestKind, endpoint: &str, out: &[u8], err: &[u8]) -> bool {
+    let (Ok(out), Ok(err)) = (std::str::from_utf8(out), std::str::from_utf8(err)) else {
+        return false;
+    };
+    let (out, err) = (out.trim(), err.trim());
+    let text = match (out.is_empty(), err.is_empty()) {
+        (true, false) => err,
+        (false, true) => out,
+        _ => return false,
+    };
+    match kind {
+        RequestKind::Probe => {
+            text == "error: device offline"
+                || text == format!("error: device '{endpoint}' not found")
+        }
+        RequestKind::Connect => {
+            text == format!("failed to connect to '{endpoint}': Connection refused")
+        }
+        _ => false,
     }
 }

@@ -73,6 +73,15 @@ pub enum WifiError {
     RecoveryExhausted,
 }
 
+impl WifiError {
+    // Keep link-loss admission and recovery retry decisions aligned. A new
+    // backend message must be classified by the runner, never broaden this to
+    // CommandFailed/UnexpectedReply or authorization/configuration failures.
+    fn is_recoverable(self) -> bool {
+        matches!(self, Self::Offline | Self::Timeout)
+    }
+}
+
 impl std::fmt::Debug for LocalEndpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("LocalEndpoint([REDACTED])")
@@ -398,7 +407,7 @@ impl<R: AdbRunner> WifiController<R> {
         let error = result.unwrap_err();
         let _ = self.events.send(WifiEvent::LinkLost);
         let recovery = self.status.lock().unwrap().recovery;
-        if recovery && matches!(error, WifiError::Timeout | WifiError::Offline) {
+        if recovery && error.is_recoverable() {
             self.transition(&op, WifiState::Recovering)?;
             op.finished = true;
             Err(error)
@@ -449,7 +458,7 @@ impl<R: AdbRunner> WifiController<R> {
                     result = Ok(());
                     break;
                 }
-                Err(WifiError::Offline | WifiError::Timeout) => {}
+                Err(error) if error.is_recoverable() => {}
                 Err(error) => {
                     result = Err(error);
                     break;
