@@ -1,12 +1,14 @@
 //! Limivra Core - Núcleo de controle de sessão e gerenciamento de display Android.
 
 pub mod adb;
+pub mod scrcpy;
 pub mod session;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use adb::{AdbDevice, DeviceStatus};
+pub use scrcpy::{ScrcpyAdapter, ScrcpyVersion};
 pub use session::{SessionController, SessionEvent};
 
 /// Erros fundamentais do núcleo Limivra.
