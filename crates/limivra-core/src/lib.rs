@@ -60,12 +60,38 @@ pub enum DisplayMode {
 }
 
 /// Estado da sessão de conexão.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionState {
     Disconnected,
     Connecting,
-    Active { serial: String, mode: DisplayMode },
+    Active {
+        #[serde(serialize_with = "serialize_redacted_serial")]
+        serial: String,
+        mode: DisplayMode,
+    },
     Terminated,
+}
+
+fn serialize_redacted_serial<S>(_: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str("[REDACTED]")
+}
+
+impl std::fmt::Debug for SessionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Disconnected => f.write_str("Disconnected"),
+            Self::Connecting => f.write_str("Connecting"),
+            Self::Active { mode, .. } => f
+                .debug_struct("Active")
+                .field("serial", &"[REDACTED]")
+                .field("mode", mode)
+                .finish(),
+            Self::Terminated => f.write_str("Terminated"),
+        }
+    }
 }
 
 /// Serviços de descoberta de dispositivos.

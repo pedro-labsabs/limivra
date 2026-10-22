@@ -1,5 +1,5 @@
 use crate::{scrcpy::ScrcpyCapabilities, CoreError, DisplayMode};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::{ffi::OsString, path::Path, time::Duration};
 use tracing::{info, warn};
 
@@ -22,14 +22,35 @@ pub struct AndroidDisplayInfo {
 }
 
 /// Perfil de hardware, fabricante e versão do sistema do dispositivo alvo.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DeviceProfile {
+    #[serde(serialize_with = "serialize_redacted_serial")]
     pub serial: String,
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub sdk_version: Option<u32>,
     pub release_version: Option<String>,
     pub incremental: Option<String>,
+}
+
+fn serialize_redacted_serial<S>(_: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str("[REDACTED]")
+}
+
+impl std::fmt::Debug for DeviceProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceProfile")
+            .field("serial", &"[REDACTED]")
+            .field("manufacturer", &self.manufacturer)
+            .field("model", &self.model)
+            .field("sdk_version", &self.sdk_version)
+            .field("release_version", &self.release_version)
+            .field("incremental", &self.incremental)
+            .finish()
+    }
 }
 
 /// Nível de suporte e certeza para criação de displays virtuais secundários.

@@ -347,7 +347,7 @@ fn secure_directory(path: &Path) -> Result<(), WifiError> {
     let uid = std::fs::metadata("/proc/self")
         .map_err(|_| WifiError::UnsafeConfiguration)?
         .uid();
-    if !m.is_dir() || m.uid() != uid || m.permissions().mode() & 0o077 != 0 {
+    if !m.is_dir() || m.uid() != uid || m.permissions().mode() & 0o7777 != 0o700 {
         return Err(WifiError::UnsafeConfiguration);
     }
     Ok(())

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 const MAX_STRUCTURED_LINE_BYTES: usize = 16 * 1024;
 
@@ -18,9 +18,10 @@ pub enum DeviceStatus {
 }
 
 /// Descritor de um dispositivo Android descoberto localmente.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdbDevice {
     /// Identificador/Serial do dispositivo (mantido apenas em memória).
+    #[serde(serialize_with = "serialize_redacted_serial")]
     pub serial: String,
     /// Estado atual da autorização.
     pub status: DeviceStatus,
@@ -30,6 +31,25 @@ pub struct AdbDevice {
     pub product: Option<String>,
     /// ID de transporte no subsistema ADB.
     pub transport_id: Option<String>,
+}
+
+fn serialize_redacted_serial<S>(_: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str("[REDACTED]")
+}
+
+impl std::fmt::Debug for AdbDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdbDevice")
+            .field("serial", &"[REDACTED]")
+            .field("status", &self.status)
+            .field("model", &self.model)
+            .field("product", &self.product)
+            .field("transport_id", &self.transport_id)
+            .finish()
+    }
 }
 
 impl AdbDevice {

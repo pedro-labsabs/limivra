@@ -92,7 +92,10 @@ impl SessionController {
         {
             Ok(c) => c,
             Err(e) => {
-                let err_msg = format!("Falha ao iniciar processo '{command}': {e}");
+                let err_msg = redact_serial(
+                    &format!("Falha ao iniciar processo '{command}': {e}"),
+                    serial,
+                );
                 *state_guard = SessionState::Disconnected;
                 // Publish the rollback before the error so projections agree with
                 // current_state() and retain the failure indication afterward.

@@ -16,6 +16,12 @@ impl LocalEndpoint {
     }
 }
 pub struct PairingCode([u8; 6]);
+
+#[cfg(test)]
+thread_local! {
+    static LAST_PAIRING_CODE_DROP_WAS_ZEROIZED: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
 impl PairingCode {
     pub fn parse(value: &str) -> Result<Self, WifiError> {
         if value.len() != 6 || !value.bytes().all(|b| b.is_ascii_digit()) {
@@ -89,7 +95,34 @@ impl std::fmt::Debug for LocalEndpoint {
 }
 impl Drop for PairingCode {
     fn drop(&mut self) {
-        self.0.fill(0);
+        zeroize_pairing_buffer(&mut self.0);
+        #[cfg(test)]
+        LAST_PAIRING_CODE_DROP_WAS_ZEROIZED.with(|result| {
+            result.set(Some(self.0.iter().all(|byte| *byte == 0)));
+        });
+    }
+}
+
+fn zeroize_pairing_buffer(buffer: &mut [u8]) {
+    for byte in buffer {
+        // SAFETY: `byte` is a valid, exclusively borrowed location in our owned secret buffer.
+        // Volatile writes prevent the compiler from removing the final clearing operation.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod pairing_code_tests {
+    use super::{PairingCode, LAST_PAIRING_CODE_DROP_WAS_ZEROIZED};
+
+    #[test]
+    fn pairing_code_drop_zeroizes_its_owned_buffer() {
+        LAST_PAIRING_CODE_DROP_WAS_ZEROIZED.with(|result| result.set(None));
+        drop(PairingCode::parse("123456").expect("test pairing code should parse"));
+        LAST_PAIRING_CODE_DROP_WAS_ZEROIZED.with(|result| {
+            assert_eq!(result.get(), Some(true));
+        });
     }
 }
 
