@@ -1,6 +1,8 @@
-# Third-party notices
+# Third-party notices — compilation inventory and SPDX compliance triage
 
-This inventory covers the 65 registry packages in the workspace dependency graph, including target-specific and development dependencies, as reported by `cargo metadata --locked --offline` for the committed `Cargo.lock` at the Issue #33 slice base (`b234beb`). Re-audit this file whenever `Cargo.lock` changes.
+This document is the compilation inventory and SPDX-expression compliance triage for the 65 registry packages in the workspace dependency graph, including target-specific and development dependencies, as reported by `cargo metadata --locked --offline` for the committed `Cargo.lock` at the Issue #33 slice base (`b234beb`). The triage found 0 of 65 declared SPDX expressions (0%) containing GPL, AGPL, or other strong-copyleft terms. Re-audit this file whenever `Cargo.lock` changes.
+
+Aggregation of the complete copyright texts for individual upstream authors is tracked for the public-distribution pre-release phase; this inventory does not claim that aggregation is complete.
 
 The two Limivra workspace packages (`limivra-core` and `limivra-cli`) are original project code licensed under MIT; see [`LICENSE`](LICENSE). The table lists third-party Cargo packages only. `adb` and `scrcpy` are invoked as separately installed host tools and are not redistributed by this tarball.
 

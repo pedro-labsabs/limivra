@@ -3,6 +3,7 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
+REPO_ROOT=$project_root
 
 case "$(uname -s):$(uname -m)" in
     Linux:x86_64) ;;
@@ -61,7 +62,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 cd "$project_root"
-"${CARGO:-cargo}" build -p limivra-cli --release --locked --offline
+RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${REPO_ROOT}=limivra" \
+    "${CARGO:-cargo}" build -p limivra-cli --release --locked --offline
 
 binary=$target_dir/release/limivra-cli
 if [ ! -x "$binary" ]; then

@@ -125,6 +125,16 @@ fn standalone_tarball_checksum_install_and_uninstall_are_complete() {
         .expect("extract standalone package");
     assert_success(&extraction, "tar -xzf");
 
+    let packaged_binary = fs::read(extracted.join("limivra"))
+        .expect("read packaged binary for build-path privacy check");
+    let worktree_path = project_root.to_string_lossy();
+    assert!(
+        !packaged_binary
+            .windows(worktree_path.len())
+            .any(|window| window == worktree_path.as_bytes()),
+        "packaged binary must not contain the absolute worktree path {worktree_path}"
+    );
+
     let prefix = temp.path().join("prefix with spaces");
     fs::create_dir(&prefix).expect("create isolated install prefix");
     let install = Command::new(extracted.join("install.sh"))
