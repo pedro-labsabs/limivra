@@ -1,6 +1,9 @@
 //! Limivra CLI - Interface de linha de comando para controle e diagnóstico do Limivra.
 
 use clap::{Parser, Subcommand};
+mod host_graphics;
+
+use host_graphics::HostGraphicsEnvironment;
 use limivra_core::session::redact_transport_arguments;
 use limivra_core::{
     AppLaunchBackend, DeviceDiscovery, DeviceStatus, DisplayMode, DisplayProber, ScrcpyAdapter,
@@ -57,6 +60,9 @@ enum Commands {
 
     /// Verifica a disponibilidade e compatibilidade das ferramentas no sistema host
     Doctor,
+
+    /// Executa smoke de detecção do ambiente gráfico host sem conectar ao servidor
+    HostGraphicsSmoke,
 }
 
 #[tokio::main]
@@ -357,6 +363,9 @@ async fn main() {
             println!("Executando diagnóstico de ambiente Limivra...");
             check_tool("adb").await;
             check_scrcpy().await;
+        }
+        Commands::HostGraphicsSmoke => {
+            println!("{}", HostGraphicsEnvironment::detect().diagnostic());
         }
     }
 }
