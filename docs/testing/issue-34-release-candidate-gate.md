@@ -36,8 +36,8 @@ O baseline da Issue #33 tinha 149 testes listados. A Issue #34 acrescenta um con
 | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` | PASS — exit 0; 150 testes passaram, 0 falharam; doctests: 0 |
 | `cargo fmt --all -- --check` | PASS — exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | PASS — exit 0, sem warnings |
-| `git diff --check origin/main...HEAD` | PENDENTE após commit da slice |
-| GitHub Actions da PR da Issue #34: Format, Clippy, Workspace tests e host graphics smoke | PENDENTE após publicação da PR |
+| `git diff --check origin/main...HEAD` | PASS — exit 0 no commit `bd848799abe5ccb54bcadd65da9b75d813787c1d` |
+| GitHub Actions da Issue #34: Format, Clippy, Workspace tests e host graphics smoke | PASS — os quatro jobs passaram nos eventos `push` (`39712719974`) e `pull_request` (`39712739660`), ambos para `bd848799abe5ccb54bcadd65da9b75d813787c1d`, concluídos em 2026-10-21. Uma atualização posterior desta checklist gera novas execuções; o status atual permanece acompanhado diretamente na PR. |
 | GitHub Actions da PR #59 (base da slice) | PASS na consulta de 2026-10-21; PR #59 permanece aberta |
 
 O teste `release_candidate_gate` valida versão do workspace contra `v0.1.0-rc1`, exige que o manifesto SHA-256 cubra exatamente as release notes e esta checklist, verifica os hashes e constrói/abre o binário do tarball para executar `--version`. Isso valida o artefato host Linux x86_64, não uma instalação em distro limpa nem um teste físico.
