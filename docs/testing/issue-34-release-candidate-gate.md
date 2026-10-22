@@ -9,6 +9,10 @@
 
 **Resultado: HOLD / NEEDS_EVIDENCE.** Os artefatos técnicos e os gates automatizados desta slice podem passar, mas isso não autoriza publicar o tarball como release, declarar M0–M4 encerrados ou substituir a aprovação do mantenedor. A Issue #20 permanece aberta, o aplicativo desktop completo e o smoke em distro limpa não existem, e a cadeia de PRs M3/M4 ainda aguarda integração sequencial.
 
+## Postura de segurança
+
+O candidato opera **sem root, sem APK companheiro e sem bypass de segurança**. Limivra respeita integralmente as restrições de segurança e permissões do Android/ROM; não contorna DRM, `FLAG_SECURE` nem controles de privilégio. UHID é um modo padrão do kernel/ADB, selecionável explicitamente apenas mediante suporte observado e sob as permissões existentes. A seleção de UHID não contorna nem substitui controles da ROM; capacidade ou permissão ausente significa respeitar a restrição.
+
 Esta revisão é uma atestação técnica do executor limitada às evidências citadas. Não é auditoria independente, assinatura criptográfica, decisão jurídica, aprovação de integração ou autorização de distribuição.
 
 **Reconciliação do tracker:** a consulta ao GitHub em 2026-10-21 mostra Issues #30 e #15 no milestone M1, Issue #31 no M0, e Issues #32–#34 no M4. O contexto de execução do projeto agrupa os artefatos de #30/#31 em M4; esta slice não altera milestones/labels externos e registra a divergência para reconciliação pelo mantenedor.
@@ -20,7 +24,7 @@ Esta revisão é uma atestação técnica do executor limitada às evidências c
 | M0 — Fundação e viabilidade | `ADR-0004` aceita MIT; `ADR-0001` a `ADR-0003` permanecem `PROPOSED`; SPIKE-001 está documentado; `ADR-0005` não existe no branch-base; Issue #9 permanece `OPEN`. | **PARTIAL / NEEDS_RECONCILIATION** — não declarar a série ADR-0001 a ADR-0005 completa. |
 | M1 — Sessão Linux via USB | O registro USB descreve mirror e teardown observados; Issues #15 e #20 permanecem `OPEN`. A execução deste gate foi offline e não repetiu o teste físico. | **NEEDS_EVIDENCE** — conservar a evidência histórica; obter fechamento/revisão da Issue #20 antes de declarar o gate de fase encerrado. |
 | M2 — Display virtual e fallback | SPIKE-001 registra display virtual, lançamento de app e fallback mirror; Issue #23 permanece `OPEN`. | **PARTIAL** — capacidade observada no dispositivo ensaiado, sem generalização de compatibilidade ou fechamento do issue. |
-| M3 — Desktop UX e Wi-Fi | Core e CLI contêm contratos de host controls, input policy, Wi-Fi ADB e launcher. Issues #25–#29 permanecem `OPEN`; não existe aplicativo desktop completo. SPIKE-028 falha o critério de duas janelas livres no cenário testado. | **PARTIAL** — contratos e observações presentes; integração de GUI, pareamento Wi-Fi físico e multijanela livre não são aprovados por este gate. |
+| M3 — Desktop UX e Wi-Fi | Core e CLI contêm contratos de host controls, input policy, Wi-Fi ADB e launcher. Operação sem root, sem APK companheiro e sem bypass de segurança; Android/ROM, DRM, `FLAG_SECURE` e controles de privilégio são respeitados. UHID depende de suporte observado e permissões existentes. Issues #25–#29 permanecem `OPEN`; não existe aplicativo desktop completo. SPIKE-028 falha o critério de duas janelas livres no cenário testado. | **PARTIAL** — contratos e observações presentes; integração de GUI, pareamento Wi-Fi físico e multijanela livre não são aprovados por este gate. |
 | M4 — Hardening e release | Testes herméticos, Threat Model, `SECURITY.md`, CI Linux, tarball e notices estão na cadeia de branches. Issues #30–#34 e PR #59 permanecem `OPEN`; licença/assinatura integral de notices e distribuição em distro limpa estão pendentes. | **PASS dos artefatos e gates locais quando indicados abaixo; HOLD para fechamento do milestone e publicação.** |
 
 ### Assinatura técnica do executor

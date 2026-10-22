@@ -40,6 +40,7 @@ impl Write for LogBuffer {
 
 fn test_subscriber(writer: LogBuffer) -> impl tracing::Subscriber + Send + Sync {
     tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
         .with_ansi(false)
         .without_time()
         .with_writer(writer)
@@ -48,6 +49,9 @@ fn test_subscriber(writer: LogBuffer) -> impl tracing::Subscriber + Send + Sync 
 
 #[tokio::test]
 async fn transport_log_redacts_serial_arguments() {
+    #[cfg(target_os = "linux")]
+    let _fixture_lock = PROCESS_FIXTURE_LOCK.lock().await;
+
     const SERIAL: &str = "LIMIVRA-TEST-SERIAL-XYZ";
 
     let captured = LogBuffer::default();

@@ -80,6 +80,22 @@ fn candidate_docs_manifest_and_release_binary_match_workspace_version() {
             "release notes must disclose {limitation} limits"
         );
     }
+    let plain_notes = notes.replace('`', "");
+    for security_claim in [
+        "sem root",
+        "sem APK companheiro",
+        "sem bypass de segurança",
+        "respeita integralmente as restrições de segurança e permissões do Android/ROM",
+        "não contorna DRM, FLAG_SECURE nem controles de privilégio",
+        "UHID",
+    ] {
+        assert!(
+            plain_notes
+                .to_lowercase()
+                .contains(&security_claim.to_lowercase()),
+            "release notes must explicitly state the security posture: {security_claim}"
+        );
+    }
 
     assert!(
         checklist_path.is_file(),
