@@ -44,7 +44,7 @@ O baseline da Issue #33 tinha 149 testes listados. A Issue #34 acrescenta um con
 | GitHub Actions da Issue #34: Format, Clippy, Workspace tests e host graphics smoke | PASS — os quatro jobs passaram nos eventos `push` (`39712719974`) e `pull_request` (`39712739660`), ambos para `bd848799abe5ccb54bcadd65da9b75d813787c1d`, concluídos em 2026-10-21. Uma atualização posterior desta checklist gera novas execuções; o status atual permanece acompanhado diretamente na PR. |
 | GitHub Actions da PR #59 (base da slice) | PASS na consulta de 2026-10-21; PR #59 permanece aberta |
 
-O teste `release_candidate_gate` valida versão do workspace contra `v0.1.0-rc1`, exige que o manifesto SHA-256 cubra exatamente as release notes e esta checklist, verifica os hashes e constrói/abre o binário do tarball para executar `--version`. Isso valida o artefato host Linux x86_64, não uma instalação em distro limpa nem um teste físico.
+O teste `release_candidate_gate` valida versão do workspace contra `v0.1.0-rc1`, exige que o manifesto SHA-256 cubra exatamente as release notes e esta checklist, verifica os hashes e constrói/abre o binário do tarball para executar `--version`. As asserções também protegem as declarações “sem root, sem APK companheiro e sem bypass de segurança”, o respeito a DRM/`FLAG_SECURE`/controles de privilégio e a seleção explícita de UHID mediante suporte observado. O teste de sanitização de logs toma o lock compartilhado dos fixtures no Linux e fixa o nível máximo do subscriber em `TRACE`. Isso valida o artefato host Linux x86_64, não uma instalação em distro limpa nem um teste físico.
 
 ## Riscos e pendências antes de qualquer distribuição pública
 
@@ -65,4 +65,4 @@ Esta slice adiciona documentação, manifesto e um teste de contrato; não alter
 
 ## Bases e escopo de diff
 
-A slice isolada da Issue #34 contém quatro arquivos sobre o commit `9df11b47a8f6d702e8113fc121f6a6d1108dbc1e`: release notes, checklist/evidência, manifesto SHA-256 e teste de contrato. A PR para `main` é cumulativa: 70 caminhos contra `origin/main` em `76d5294de19dafac3daa4a26b0a9ff00af85f228` (66 caminhos anteriores mais os quatro desta slice). Esses totais foram medidos depois do commit da slice; não atribuir o diff cumulativo inteiro à Issue #34.
+A slice isolada da Issue #34 contém cinco caminhos sobre o commit `9df11b47a8f6d702e8113fc121f6a6d1108dbc1e`: release notes, checklist/evidência, manifesto SHA-256, teste do contrato de RC e o teste de tracing serializado com fixtures. A PR para `main` é cumulativa: 71 caminhos contra `origin/main` em `76d5294de19dafac3daa4a26b0a9ff00af85f228` (66 caminhos anteriores mais os cinco desta slice). Esses totais foram medidos no commit `de2a3c9`; não atribuir o diff cumulativo inteiro à Issue #34.
