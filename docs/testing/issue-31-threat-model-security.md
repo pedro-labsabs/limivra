@@ -41,7 +41,7 @@ Executados no worktree `/tmp/limivra-31` em 2026-10-21 com `rustc 1.88.0 (6b00bc
 | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` | exit 0; 142 testes passaram, 0 falharam; doctests: 0 |
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
-| `git diff --check origin/main...HEAD` | PENDENTE até o commit desta edição |
+| `git diff --check origin/main...HEAD` | exit 0; sem erros de whitespace no diff cumulativo, executado após `184753d` |
 
 Durante uma execução completa, o stderr imprimiu uma vez `sleep: invalid option -- '-s'`. A origem provável foi o teste preexistente `provider::tests::test_provider_fallback_when_host_unsupported`, que usa `sleep` como mock de scrcpy enquanto o provider fornece argumentos reais de scrcpy. A execução isolada desse teste passou sem reproduzir a linha; o exit code da suíte completa permaneceu 0. Nenhuma alteração foi feita nesse teste fora do escopo da Issue #31.
 
