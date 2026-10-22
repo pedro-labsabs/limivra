@@ -321,7 +321,8 @@ O mantenedor é convidado a avaliar e registrar sua decisão sobre os seguintes 
 
 - Session Core e CLI em Rust.
 - Interface gráfica Linux futura em Qt 6/QML.
-- ADB e scrcpy como ferramentas externas supervisionadas em subprocessos; encerramento seguro limitado a processos pertencentes ao Limivra.
+- ADB e scrcpy como ferramentas externas supervisionadas em subprocessos; timeout, cancelamento e teardown/encerramento seguro limitados a processos filhos próprios iniciados pelo Limivra.
+- Separação conceitual entre o núcleo Session Core/CLI e a futura UI Qt 6/QML; a topologia de processos e o mecanismo de integração permanecem abertos, incluindo processos separados, FFI ou biblioteca compartilhada.
 - Fluxo sem root, desbloqueio de bootloader, bypass ou modificação persistente de controles de segurança.
 - Modos MIRROR, VIRTUAL_DISPLAY e DESKTOP_WINDOWING distintos.
 - Estados de capacidade SUPPORTED, UNSUPPORTED, UNKNOWN (padrão) e BLOCKED.
@@ -332,13 +333,13 @@ As ADR-0001, ADR-0002, ADR-0003 e ADR-0005 registram ACCEPTED somente dentro des
 
 ### Decisões e ações que permanecem abertas ou não autorizadas
 
-- Nenhum contrato concreto de integração/IPC foi aprovado: formato, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida seguem pendentes.
+- Nenhum contrato concreto de integração/IPC foi aprovado: formato, esquema de mensagens, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida seguem pendentes.
 - Embedding de vídeo em Qt requer investigação e decisão separadas.
 - Código de produto, scaffold Rust e testes com telefone físico não foram autorizados.
 - O PRD e a especificação completa não foram ratificados automaticamente.
 - Nenhuma capacidade do Redmi Note 13 4G/HyperOS foi afirmada ou aprovada.
 - Release, distribuição e aproveitamento de PRs de produto já abertas não foram autorizados.
-- A direção aceita não aprova automaticamente o mecanismo de comunicação entre UI e núcleo nem a integração de vídeo.
+- A direção aceita não aprova a topologia de processos nem o mecanismo de integração entre UI e núcleo, e não aprova embedding de vídeo.
 
 ### Gates que mantêm M1 bloqueado
 

@@ -6,7 +6,7 @@
 scrcpy oferece comunicação e interação maduras. Desenvolver streaming próprio antes de provar displays virtuais aumentaria custo.
 
 ## Decisão aceita no escopo limitado
-Invocar scrcpy como ferramenta externa supervisionada em subprocesso no backend inicial; verificar versão e opções reais, tratar saída e falhas e encerrar exclusivamente o processo filho iniciado pelo Limivra. ADB também será ferramenta externa em subprocesso supervisionado para funções futuras autorizadas. Esta aceitação não fixa a comunicação da UI com o núcleo, não aprova embedding de vídeo e não autoriza implementação.
+Invocar scrcpy como ferramenta externa supervisionada em subprocesso no backend inicial; verificar versão e opções reais, tratar saída e falhas, supervisionar timeout e cancelamento e fazer teardown/encerramento seguro exclusivamente do processo filho iniciado pelo Limivra. ADB também será ferramenta externa em subprocesso supervisionado para funções futuras autorizadas. Esta aceitação não fixa a comunicação da UI com o núcleo, não aprova embedding de vídeo e não autoriza implementação.
 
 ## Consequências
 + Implementação inicial simples, reproduzível e reversível.

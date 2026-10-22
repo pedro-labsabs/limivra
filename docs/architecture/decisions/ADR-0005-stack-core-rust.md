@@ -18,25 +18,26 @@ A proposta preserva três modos com evidências separadas:
 
 ## Direção arquitetural aceita no escopo limitado
 
-Ficam aceitos o núcleo de sessão e CLI em Rust, a interface Linux futura em Qt 6/QML e ADB/scrcpy como ferramentas externas em subprocessos supervisionados. A interface e o núcleo são componentes/processos conceitualmente separados; o mecanismo concreto de integração entre eles não foi escolhido. O Limivra só encerrará processos que pertencem à sua própria sessão.
+Ficam aceitos o núcleo de sessão e CLI em Rust, a interface Linux futura em Qt 6/QML e ADB/scrcpy como ferramentas externas em subprocessos supervisionados. UI e núcleo têm separação conceitual; isso não determina sua topologia de processos. A supervisão de subprocessos inclui timeout, cancelamento e teardown/encerramento seguro, limitados a processos filhos próprios iniciados pelo Limivra.
 
 Essa separação conceitual mantém as regras de sessão fora da interface. Qualquer integração futura terá de definir fronteiras, erros e encerramento, mas este registro não escolhe IPC, FFI ou outro mecanismo. Embedding de vídeo em Qt e protocolo próprio de streaming não foram aprovados.
 
 ~~~text
-[Qt 6/QML — processo futuro da interface]
-                 [mecanismo de integração: não decidido]
-[Rust Session Core + CLI — processo do núcleo]
-                 ├── subprocesso externo supervisionado: ADB
-                 └── subprocesso externo supervisionado: scrcpy
+[UI futura — Qt 6/QML]
+    [separação conceitual; topologia de processos e integração não decididas]
+[Núcleo — SessionCore/CLI em Rust]
+    ├── subprocesso externo supervisionado: ADB
+    └── subprocesso externo supervisionado: scrcpy
 ~~~
 
 O núcleo só deve supervisionar processos que iniciou e encerrar esses processos de forma idempotente. Não deve usar encerramento global por nome de processo. O servidor ADB e o serviço remoto que scrcpy eventualmente inicia no aparelho exigem tratamento de ciclo de vida próprio; esta proposta não afirma que foram exercitados.
 
 ## Limites explícitos da ratificação humana
 
-A aceitação abrange somente a direção de Session Core/CLI em Rust, UI Linux futura em Qt 6/QML, ferramentas ADB/scrcpy externas supervisionadas e encerramento apenas de processos pertencentes ao Limivra. Continuam expressamente pendentes:
+A aceitação abrange somente a direção de Session Core/CLI em Rust, UI Linux futura em Qt 6/QML, separação conceitual entre núcleo e UI, ferramentas ADB/scrcpy externas supervisionadas e timeout, cancelamento e teardown/encerramento seguro limitados a processos filhos próprios iniciados pelo Limivra. Continuam expressamente pendentes:
 
-- Qualquer contrato concreto de IPC ou integração: formato, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida.
+- Topologia de processos e mecanismo de integração entre UI e núcleo: processos separados, FFI ou biblioteca compartilhada não foram aprovados.
+- Qualquer contrato concreto de integração/IPC: formato, esquema de mensagens, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida.
 - Embedding de vídeo em Qt.
 - Código de produto, scaffold Rust e testes com telefone físico.
 - Ratificação integral do PRD ou da especificação.
@@ -72,8 +73,8 @@ A comparação abaixo permanece qualitativa e não resulta de benchmark nem de p
 
 | Alternativa | Vantagens para este problema | Custos e riscos |
 |---|---|---|
-| **Rust para núcleo/CLI + Qt 6/QML para UI futura** (direção ratificada) | Núcleo independente da UI por direção arquitetural e CLI útil para diagnóstico. A integração entre componentes continua sem mecanismo ou contrato aprovado. | Dois runtimes/ecossistemas, mecanismo de integração ainda não escolhido, publicação de executáveis separados e manutenção coordenada. Empacotamento e integração com Qt permanecem sem prova. |
-| **C** | Baixa camada de runtime e ABI C simples para interoperabilidade entre linguagens. | Gestão manual de memória e recursos, maior carga de segurança e manutenção para estados, concorrência e erros de subprocesso; não remove o custo da UI Qt ou do protocolo entre processos. |
+| **Rust para núcleo/CLI + Qt 6/QML para UI futura** (direção ratificada) | Núcleo independente da UI por direção arquitetural e CLI útil para diagnóstico. A integração entre componentes continua sem mecanismo ou contrato aprovado. | Dois runtimes/ecossistemas, mecanismo de integração ainda não escolhido e manutenção coordenada. Empacotamento, forma dos artefatos e integração com Qt permanecem sem prova. |
+| **C** | Baixa camada de runtime e ABI C simples para interoperabilidade entre linguagens. | Gestão manual de memória e recursos, maior carga de segurança e manutenção para estados, concorrência e erros de subprocesso; não remove o custo da UI Qt nem define o mecanismo de integração UI/núcleo que vier a ser aprovado. |
 | **C++** | Ecossistema nativo de Qt, acesso direto às APIs de interface e ausência de fronteira Rust/C++ se todo o produto usar C++. | Núcleo e UI tendem a compartilhar toolchain e padrões Qt; lógica de sessão fica mais acoplada à plataforma de UI e exige disciplina adicional para testes headless e fronteiras de propriedade. |
 | **Go** | Binário de aplicação único por alvo e modelo direto para coordenação concorrente de subprocessos. | UI Qt 6/QML requer avaliar bindings e a ponte C/C++ disponível; cgo e toolchain cruzada acrescentam manutenção e podem reduzir a simplicidade de empacotamento esperada. |
 | **Python** | Iteração rápida e bindings Qt disponíveis para construir interfaces. | Requer runtime e ambiente de pacotes ou bundling, com maior variação entre distribuições; tipagem e erros em runtime elevam o trabalho de validação do supervisor de processos. |
@@ -85,7 +86,7 @@ A ratificação confirma essa direção como escolha arquitetural limitada, não
 
 ### FFI e fronteira entre linguagens
 
-A decisão humana separa UI e núcleo conceitualmente, mas não escolhe FFI, IPC ou outro mecanismo de integração. Se uma proposta futura usar IPC, será necessário decidir formato, transporte, serialização, autenticação, versionamento, ciclo de vida, timeouts, cancelamento, erros e queda de processo. Se usar FFI, os custos abaixo se aplicam; nenhum desses contratos foi ratificado.
+A decisão humana estabelece separação conceitual entre UI e núcleo, mas mantém pendentes a topologia de processos e o mecanismo de integração: processos separados, FFI ou biblioteca compartilhada. Nenhuma dessas opções foi aprovada. Se uma proposta futura usar IPC, será necessário decidir formato, esquema de mensagens, transporte, serialização, autenticação, versionamento, ciclo de vida, timeouts, cancelamento, erros e queda de processo. Se usar FFI, os custos abaixo se aplicam; nenhum desses contratos foi ratificado.
 
 Se futuramente for preferida uma biblioteca Rust carregada dentro do processo Qt/C++, haverá custo de uma ABI C estável e versionada, conversão de tipos, propriedade e duração de memória, callbacks e threads, propagação de erros, prevenção de panic através da fronteira e testes nos dois lados. Exceções C++ e tipos de Qt não devem atravessar diretamente uma ABI Rust. A eventual ponte FFI seria uma decisão própria, não parte desta ADR.
 
@@ -101,9 +102,9 @@ Um pacote futuro precisaria decidir como entregar ou localizar o núcleo e a UI,
 
 ### Teste e manutenção
 
-A divisão de processos permite testes unitários do núcleo, executáveis fake para ADB/scrcpy, testes do contrato IPC e testes de falhas de processo sem UI. Em seguida seriam necessários testes da UI em X11 e Wayland separadamente, e testes físicos autorizados para USB, mirror, input e display virtual. Uma verificação só em X11 não pode ser reportada como suporte Wayland.
+A separação conceitual permite planejar testes unitários do núcleo independentemente da UI, além de executáveis fake para ADB/scrcpy. Os testes do caminho de integração, do contrato correspondente e das falhas de execução dependerão da topologia e do mecanismo que vierem a ser aprovados. Em seguida seriam necessários testes da UI em X11 e Wayland separadamente, e testes físicos autorizados para USB, mirror, input e display virtual. Uma verificação só em X11 não pode ser reportada como suporte Wayland.
 
-A manutenção cobrirá Rust, Qt/QML, o mecanismo de integração que vier a ser aprovado e diferenças entre versões empacotadas de ADB/scrcpy. Registrar versões e opções não substitui testes de comportamento. O custo de FFI só será evitado se uma decisão futura mantiver componentes em processos separados; essa decisão de integração ainda está pendente.
+A manutenção cobrirá Rust, Qt/QML, o mecanismo de integração que vier a ser aprovado e diferenças entre versões empacotadas de ADB/scrcpy. Registrar versões e opções não substitui testes de comportamento. O custo de FFI dependerá do mecanismo de integração escolhido; processos separados poderiam evitá-lo, mas essa topologia ainda não foi aprovada.
 
 ## Princípio capability-first e fallback
 
@@ -120,7 +121,7 @@ O fallback de VIRTUAL_DISPLAY para MIRROR nunca é automático. A interface só 
 
 ## Riscos, alternativas não selecionadas e limites
 
-- O contrato IPC, sua política de autenticação local, compatibilidade e encerramento ainda não foram especificados nem aprovados.
+- A topologia de processos e o mecanismo de integração entre UI e núcleo continuam pendentes; o contrato IPC, incluindo formato, esquema de mensagens, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida, ainda não foi especificado nem aprovado.
 - Qt 6/QML não foi encontrado no host por pkg-config; instalação, build, UI, plugins e empacotamento permanecem sem prova.
 - Apenas a existência das opções do scrcpy foi observada. USB, autorização ADB, mirror, input, display virtual, inicialização de app e suporte de ROM não foram testados.
 - Wayland não foi verificado. A sessão observada foi X11.
