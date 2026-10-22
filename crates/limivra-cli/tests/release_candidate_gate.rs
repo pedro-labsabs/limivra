@@ -81,21 +81,6 @@ fn candidate_docs_manifest_and_release_binary_match_workspace_version() {
         );
     }
     let plain_notes = notes.replace('`', "");
-    for security_claim in [
-        "sem root",
-        "sem APK companheiro",
-        "sem bypass de segurança",
-        "respeita integralmente as restrições de segurança e permissões do Android/ROM",
-        "não contorna DRM, FLAG_SECURE nem controles de privilégio",
-        "UHID",
-    ] {
-        assert!(
-            plain_notes
-                .to_lowercase()
-                .contains(&security_claim.to_lowercase()),
-            "release notes must explicitly state the security posture: {security_claim}"
-        );
-    }
 
     assert!(
         checklist_path.is_file(),
@@ -103,6 +88,51 @@ fn candidate_docs_manifest_and_release_binary_match_workspace_version() {
         checklist_path.display()
     );
     let checklist = fs::read_to_string(&checklist_path).expect("release checklist is UTF-8");
+    let plain_checklist = checklist.replace('`', "");
+
+    let security_claims = [
+        "sem root",
+        "sem APK companheiro",
+        "sem bypass de segurança",
+        "respeita integralmente as restrições de segurança e permissões do Android/ROM",
+        "não contorna DRM, FLAG_SECURE nem controles de privilégio",
+    ];
+    let uhid_conditions = [
+        "modo padrão do kernel/ADB",
+        "suporte observado",
+        "permissões existentes",
+    ];
+    for (document_name, document) in [
+        ("release notes", plain_notes.as_str()),
+        ("release checklist", plain_checklist.as_str()),
+    ] {
+        let normalized = document.to_lowercase();
+        for claim in security_claims {
+            assert!(
+                normalized.contains(&claim.to_lowercase()),
+                "{document_name} must explicitly state the security posture: {claim}"
+            );
+        }
+        for condition in uhid_conditions {
+            assert!(
+                normalized.contains(&condition.to_lowercase()),
+                "{document_name} must document the safe UHID condition: {condition}"
+            );
+        }
+    }
+    assert!(
+        plain_notes
+            .to_lowercase()
+            .contains("não como mecanismo de elevação ou evasão"),
+        "release notes must state UHID is not an elevation or evasion mechanism"
+    );
+    assert!(
+        plain_checklist
+            .to_lowercase()
+            .contains("não contorna nem substitui controles da rom"),
+        "release checklist must state UHID does not bypass or replace ROM controls"
+    );
+
     for milestone in ["M0", "M1", "M2", "M3", "M4"] {
         assert!(
             checklist.contains(milestone),
