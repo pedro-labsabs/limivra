@@ -1,5 +1,7 @@
 # Limivra
 
+[![CI](https://github.com/pedro-labsabs/limivra/actions/workflows/ci.yml/badge.svg)](https://github.com/pedro-labsabs/limivra/actions/workflows/ci.yml)
+
 > O Android ganha espaço no Linux, sem depender de um fabricante.
 
 **Estado:** planejamento e pesquisa; nenhum aplicativo Limivra funcional foi implementado. **Idioma principal:** português brasileiro. **Repositório:** https://github.com/pedro-labsabs/limivra
@@ -34,7 +36,7 @@ Limivra é uma proposta de aplicativo livre para acessar e controlar um telefone
 - Dispositivo de referência inicial: Redmi Note 13 4G com HyperOS, sem root.
 - Transporte inicial: scrcpy executado como subprocesso; ADB controla descoberta e autorização.
 - Stack **proposta, sujeita a ADR e prova:** Qt 6/QML (UI), Rust (núcleo de sessão), scrcpy e ADB (backends).
-- **Sem código de produto, sem CI funcional e sem release neste momento.** Não marcar tarefas concluídas com base apenas em documentação.
+- **Estado:** núcleo/CLI inicial e CI Linux automatizada; ainda não há aplicativo desktop completo nem release. CI não prova uma sessão gráfica ou experiência em monitor real.
 
 ## Referências oficiais
 
@@ -43,3 +45,17 @@ Limivra é uma proposta de aplicativo livre para acessar e controlar um telefone
 - [REA](https://github.com/morluto/rea)
 
 **Licença:** o código original do Limivra é licenciado sob a [Licença MIT](LICENSE). Dependências externas (como scrcpy e Qt) possuem licenças próprias e devem ter suas respectivas obrigações observadas na distribuição.
+
+## Pacote Linux x86_64
+
+A distribuição de desenvolvimento desta slice é um tarball standalone para Linux x86_64. Após obter `limivra-linux-x86_64.tar.gz` e `SHA256SUMS`, verifique e instale sem privilégios de root:
+
+```sh
+sha256sum --check SHA256SUMS
+mkdir -p limivra-package
+tar -xzf limivra-linux-x86_64.tar.gz -C limivra-package
+cd limivra-package
+./install.sh
+```
+
+O instalador usa `~/.local/bin` por padrão; defina `PREFIX=/caminho/gravavel` para instalar em `$PREFIX/bin`. Use `./uninstall.sh` no diretório extraído para remover o executável desse prefixo. `adb` e `scrcpy` são ferramentas do host e não estão incluídas; instale-as separadamente e mantenha-as no `PATH`. O checksum detecta alterações do arquivo em relação ao manifesto recebido, mas não é uma assinatura digital.
