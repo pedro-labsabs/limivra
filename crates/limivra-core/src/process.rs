@@ -159,12 +159,56 @@ mod tests {
     use super::*;
     use std::{
         fs,
-        os::unix::fs::PermissionsExt,
+        os::unix::{ffi::OsStrExt, fs::PermissionsExt},
         path::PathBuf,
         sync::atomic::{AtomicU64, Ordering},
     };
 
     static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+    const FIXTURE_ENV_MARKER: &[u8] = b"LIMIVRA_PROCESS_FIXTURE_ROOT=";
+
+    fn signal_fixture_process(pid: libc::pid_t, root: &Path) {
+        if pid <= 0 {
+            return;
+        }
+
+        // Pin this process identity before reading /proc so PID reuse cannot
+        // redirect the eventual signal to an unrelated process.
+        let pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        if pidfd < 0 {
+            return;
+        }
+        let pidfd = pidfd as libc::c_int;
+
+        let belongs_to_fixture =
+            fs::read(format!("/proc/{pid}/environ"))
+                .ok()
+                .is_some_and(|environment| {
+                    environment.split(|byte| *byte == 0).any(|entry| {
+                        entry
+                            .strip_prefix(FIXTURE_ENV_MARKER)
+                            .is_some_and(|value| value == root.as_os_str().as_bytes())
+                    })
+                });
+
+        if belongs_to_fixture {
+            // SAFETY: pidfd pins the process identity, and its environment
+            // contains this fixture's exact private root before signaling.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    pidfd,
+                    libc::SIGKILL,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                );
+            }
+        }
+        // SAFETY: pidfd is the descriptor returned by pidfd_open above.
+        unsafe {
+            libc::close(pidfd);
+        }
+    }
 
     struct Fixture {
         root: PathBuf,
@@ -224,15 +268,73 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn fixture_drop_does_not_kill_an_unrelated_pid_marker() {
+        let fixture = Fixture::new("exit 0");
+        let mut unrelated = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .expect("start unrelated process");
+        fs::write(fixture.root.join("pid"), unrelated.id().to_string())
+            .expect("write unrelated PID to fixture marker");
+
+        drop(fixture);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let survived = unrelated
+            .try_wait()
+            .expect("inspect unrelated process")
+            .is_none();
+        if survived {
+            unrelated
+                .kill()
+                .expect("stop unrelated process after assertion");
+        }
+        let _ = unrelated.wait().expect("reap unrelated process");
+
+        assert!(survived, "fixture teardown must not signal a foreign PID");
+    }
+
+    #[tokio::test]
+    async fn fixture_drop_kills_its_marked_child_and_child_handle_reaps_it() {
+        let fixture = Fixture::new("exec /bin/sleep 30");
+        let mut child = std::process::Command::new(&fixture.executable)
+            .args(&fixture.args)
+            .spawn()
+            .expect("start fixture child");
+        fixture.wait_for_pid().await;
+
+        drop(fixture);
+        let exited = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                match child.try_wait().expect("inspect fixture child") {
+                    Some(status) => break status,
+                    None => tokio::time::sleep(Duration::from_millis(5)).await,
+                }
+            }
+        })
+        .await;
+        let status = match exited {
+            Ok(status) => status,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("fixture teardown did not stop its own child");
+            }
+        };
+        let _ = child.wait().expect("reap fixture child after teardown");
+
+        assert!(
+            !status.success(),
+            "fixture child should be killed on teardown"
+        );
+    }
+
     impl Drop for Fixture {
         fn drop(&mut self) {
             for name in ["pid", "descendant"] {
                 if let Ok(contents) = fs::read_to_string(self.root.join(name)) {
                     if let Ok(pid) = contents.trim().parse::<libc::pid_t>() {
-                        // SAFETY: these private markers are written by this fixture's child processes.
-                        unsafe {
-                            libc::kill(pid, libc::SIGKILL);
-                        }
+                        signal_fixture_process(pid, &self.root);
                     }
                 }
             }

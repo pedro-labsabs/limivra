@@ -129,9 +129,9 @@ Preencher somente com os resultados dos comandos executados nesta worktree.
 | Arquivos no diff cumulativo do PR | 50 no snapshot auditado antes desta revisão; 51 após a adição do workflow de CI |
 | Sistema | `Linux 7.0.0-30-generic` |
 | Rust / Cargo | `rustc 1.88.0 (6b00bc388 2025-06-23)` / `cargo 1.88.0 (873a06493 2025-05-10)` |
-| Suíte final após a correção de PID | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 135 testes |
+| Suíte final após a correção de PID | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 137 testes |
 | Workflow de CI | `.github/workflows/ci.yml`: push e pull request; três jobs Linux; sem SDK Android, emulador ou ADB daemon |
-| Testes de PID/reaping | RED no registro reaproveitado antes da correção; GREEN com `pidfd` + marcador de ambiente exato; filho owned encerrado e aguardado |
+| Testes de PID/reaping | RED para marcadores apontando a processo alheio nas duas fixtures; GREEN com `pidfd` + marcador de ambiente exato; cleanup do filho próprio e `wait()` confirmados |
 | Repetições herméticas antes desta revisão | Mesmo comando, 10/10 rodadas exit 0; cada rodada executou 134 testes. Tabela abaixo. |
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
@@ -152,17 +152,25 @@ Detalhe das dez repetições executadas antes desta revisão:
 | 9 | 0 | 134 |
 | 10 | 0 | 134 |
 
-As dez repetições acima foram executadas antes desta revisão de segurança, com
-134 testes. Esta revisão adiciona um teste de regressão, elevando a suíte atual
-para 135; a execução única final de 135 testes e todos os gates está registrada
-após os reparos abaixo.
+As dez repetições acima foram executadas antes das revisões de segurança, com
+134 testes. A primeira rodada acrescentou um teste para o teardown da fixture de
+integração. Esta rodada acrescenta regressões para não sinalizar PID alheio e
+para matar/recolher filho próprio na fixture interna de `process.rs`; a execução
+final contém 137 testes e os gates desta revisão estão registrados abaixo.
 
 Na primeira série exploratória, antes do isolamento dos fixtures de sessão e
 CLI, a rodada 5/10 falhou com `ETXTBSY` em `rapid_start_stop_cycles_reap_every_owned_child` (91 testes haviam terminado antes da falha). As operações de escrita e execução dos fakes foram serializadas dentro desses test binaries. A revisão independente também detectou e motivou os testes de descendentes, timeout/output cap do `doctor` e cleanup de fixture descritos acima. Depois das correções, uma suíte workspace final e as dez repetições de 134 testes passaram. As falhas iniciais não foram omitidas desta evidência.
 
 ## Prontidão reconciliada
 
-O Orquestrador informou que a dependência técnica da Issue #15 está satisfeita
-desde PR #42 e que a Issue #30 pertence formalmente ao Épico #6 / M4. A
-visualização atual do GitHub pode continuar desatualizada; esta slice não altera
-issue, milestone nem outro metadado externo.
+Consulta ao GitHub em 2026-10-21: a [Issue #15](https://github.com/pedro-labsabs/limivra/issues/15)
+e o [PR #42](https://github.com/pedro-labsabs/limivra/pull/42) continuam `OPEN`,
+aguardando merge do mantenedor. A cabeça do PR #42 (`ce366b9`) e a base da slice
+`2ba9284` são ancestrais desta branch, portanto a estrutura técnica está presente
+no histórico atual enquanto os objetos GitHub seguem abertos.
+
+A Issue #30 está catalogada no Roadmap sob M4 — Hardening & Release (testes e
+qualidade, privacidade e segurança, distribuição e documentação). No GitHub, a
+[Issue #30](https://github.com/pedro-labsabs/limivra/issues/30) permanece `OPEN`
+e rotulada no milestone M1 — Linux USB Session MVP.
+Esta evidência registra a divergência; nenhum metadado externo foi alterado.
