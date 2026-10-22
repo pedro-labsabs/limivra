@@ -7,7 +7,7 @@
 
 ## Escopos do diff
 
-A slice isolada da Issue #32 é comparada com o commit `9cbc200` da Issue #31 e contém 6 arquivos: workflow de CI, badge/estado do README, detector e subcommand CLI, teste de contrato CLI e esta evidência.
+A slice isolada da Issue #32 é comparada com o commit `9cbc200` da Issue #31 e contém 7 arquivos: os seis da slice gráfica inicial (workflow de CI, badge/estado do README, detector, subcommand CLI, teste de contrato CLI e esta evidência), mais `crates/limivra-core/src/process.rs` com o ajuste de estabilização do teste de timeout.
 
 A PR para `main` contém o diff cumulativo dos branches M3/M4 que ainda aguardam integração sequencial. Em relação a `origin/main` (`76d5294`), o diff cumulativo tem 59 arquivos; esse total não representa apenas a slice #32.
 
