@@ -1,5 +1,7 @@
 # Limivra
 
+[![CI](https://github.com/pedro-labsabs/limivra/actions/workflows/ci.yml/badge.svg)](https://github.com/pedro-labsabs/limivra/actions/workflows/ci.yml)
+
 > O Android ganha espaço no Linux, sem depender de um fabricante.
 
 **Estado:** planejamento e pesquisa; nenhum aplicativo Limivra funcional foi implementado. **Idioma principal:** português brasileiro. **Repositório:** https://github.com/pedro-labsabs/limivra
@@ -34,7 +36,7 @@ Limivra é uma proposta de aplicativo livre para acessar e controlar um telefone
 - Dispositivo de referência inicial: Redmi Note 13 4G com HyperOS, sem root.
 - Transporte inicial: scrcpy executado como subprocesso; ADB controla descoberta e autorização.
 - Stack **proposta, sujeita a ADR e prova:** Qt 6/QML (UI), Rust (núcleo de sessão), scrcpy e ADB (backends).
-- **Sem código de produto, sem CI funcional e sem release neste momento.** Não marcar tarefas concluídas com base apenas em documentação.
+- **Estado:** núcleo/CLI inicial e CI Linux automatizada; ainda não há aplicativo desktop completo nem release. CI não prova uma sessão gráfica ou experiência em monitor real.
 
 ## Referências oficiais
 

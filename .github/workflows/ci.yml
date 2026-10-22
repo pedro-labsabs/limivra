@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Lint all workspace targets
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Workspace tests (Linux, hermetic fakes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test workspace
+        run: cargo test --workspace --locked
+
+  host-graphics-smoke:
+    name: Host graphics smoke (headless + controlled mocks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Headless smoke with display variables unset
+        shell: bash
+        run: |
+          output="$(env -u DISPLAY -u WAYLAND_DISPLAY cargo run --quiet --locked -p limivra-cli -- host-graphics-smoke)"
+          printf '%s\n' "$output"
+          grep -q '^SKIP: host headless;' <<<"$output"
+      - name: X11 environment marker smoke (controlled mock)
+        shell: bash
+        run: |
+          output="$(env -u WAYLAND_DISPLAY DISPLAY=:limivra-ci-mock cargo run --quiet --locked -p limivra-cli -- host-graphics-smoke)"
+          printf '%s\n' "$output"
+          grep -q '^DETECTED: X11 environment indicated;' <<<"$output"
+      - name: Wayland environment marker smoke (controlled mock)
+        shell: bash
+        run: |
+          output="$(env WAYLAND_DISPLAY=wayland-limivra-ci-mock DISPLAY=:limivra-ci-mock cargo run --quiet --locked -p limivra-cli -- host-graphics-smoke)"
+          printf '%s\n' "$output"
+          grep -q '^DETECTED: Wayland environment indicated;' <<<"$output"
