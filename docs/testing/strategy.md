@@ -30,6 +30,8 @@
 
 `docs/testing/issue-30-contract-tests-fakes.md` registra fixtures, casos de falha de processo, limites e resultados reproduzíveis da validação offline. Esses testes não iniciam telefone, daemon ADB real nem rede externa; testes de integração física permanecem no fluxo E2E separado.
 
+`.github/workflows/ci.yml` executa fmt, Clippy estrito e testes do workspace em Linux para cada push e pull request. O job padrão não provisiona SDK Android, emulador ou daemon ADB; os testes de processo usam executáveis fake locais.
+
 ## Gates de release
 Nenhum release enquanto houver: licença não definida, caminho básico sem-root não comprovado, falha crítica de privacidade, processo órfão reproduzido sem mitigação, CI inexistente, ausência de documentação de instalação ou claims de compatibilidade sem matriz.
 

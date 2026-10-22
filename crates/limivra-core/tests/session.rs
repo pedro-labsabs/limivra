@@ -310,3 +310,34 @@ async fn dropping_common_fixture_kills_and_reaps_owned_child() {
         "fixture-owned child should be reaped during teardown"
     );
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn dropping_common_fixture_does_not_signal_an_unrelated_pid_marker() {
+    let _fixture_lock = PROCESS_FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::new("exit 0");
+    let mut unrelated = std::process::Command::new("/bin/sleep")
+        .arg("30")
+        .spawn()
+        .expect("start unrelated process");
+    std::fs::write(
+        fixture.pid_file("fixture-root-pid"),
+        unrelated.id().to_string(),
+    )
+    .expect("write unrelated PID to the fixture marker");
+
+    drop(fixture);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let survived = unrelated
+        .try_wait()
+        .expect("inspect unrelated process")
+        .is_none();
+    if survived {
+        unrelated
+            .kill()
+            .expect("stop unrelated process after assertion");
+    }
+    let _ = unrelated.wait().expect("reap unrelated process");
+
+    assert!(survived, "fixture teardown must not signal a foreign PID");
+}

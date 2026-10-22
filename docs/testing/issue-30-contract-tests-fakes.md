@@ -13,6 +13,29 @@ isso não é transporte de rede nem evidência de pareamento real. A suíte não
 prova compatibilidade de ROM, UI, foco gráfico, Wayland/X11 ou comportamento de
 scrcpy real.
 
+## CI hermético padrão
+
+O workflow `.github/workflows/ci.yml` roda em Linux para `push` e
+`pull_request`, com jobs separados para `cargo fmt`, Clippy estrito e a suíte
+completa do workspace em modo locked. Não instala Android SDK/platform-tools,
+emulador ou agente de modelo, e não inicia telefone, ADB daemon nem serviço
+externo. A resolução inicial das dependências do runner usa `Cargo.lock`; os
+testes executados não acessam a rede e substituem as ferramentas por fakes
+locais.
+
+## Bases e escopo de diff
+
+- Base da slice da Issue #30: commit
+  `2ba92849e532f8551e70fc723b912117691478c5`, branch
+  `agent/29-launcher-app-controls`. O diff isolado inicial da slice tinha 24
+  arquivos. Esta revisão adiciona `.github/workflows/ci.yml`, elevando o diff
+  isolado atual para 25 arquivos.
+- Base do PR #56: `origin/main` em
+  `76d5294de19dafac3daa4a26b0a9ff00af85f228`. O diff cumulativo auditado antes
+  desta revisão tinha 50 arquivos porque os branches M3/M4 aguardam merge
+  sequencial. A adição do workflow de CI eleva o diff cumulativo atual para 51
+  arquivos.
+
 ## Contratos cobertos
 
 | Contrato | Fake/fixture | Comando focalizado | Resultado esperado |
@@ -44,7 +67,12 @@ scrcpy real.
   stdin privado.
 - Fixtures de processo usam diretórios temporários com permissões `0700`,
   executáveis locais, marcador automático do processo raiz, PID markers e
-  teardown restrito aos PIDs publicados pela fixture. A suíte
+  teardown restrito aos processos que provam conter o valor exato de
+  `LIMIVRA_FIXTURE_ROOT`. Para PIDs externos, o cleanup abre um `pidfd`, valida
+  `/proc/<pid>/environ` e envia o sinal pelo `pidfd`, evitando atingir um
+  processo diferente após reutilização numérica do PID; falha ao abrir ou
+  validar encerra sem sinalizar. Filhos criados diretamente pela fixture são
+  terminados pelo handle `Child` e sempre aguardados com `wait()`. A suíte
   de runner Wi-Fi, de sessão e da CLI serializa operações que escrevem e iniciam
   executáveis fake para evitar `ETXTBSY` interteste; concorrência e cancelamento
   continuam exercitados dentro dos cenários dedicados.
@@ -95,16 +123,21 @@ Preencher somente com os resultados dos comandos executados nesta worktree.
 | Item | Resultado |
 |---|---|
 | Worktree / branch | `/tmp/limivra-30` / `agent/30-contract-tests-fakes` |
-| Base | `2ba92849e532f8551e70fc723b912117691478c5` |
+| Base da slice #30 | `2ba92849e532f8551e70fc723b912117691478c5` (`agent/29-launcher-app-controls`) |
+| Base do PR #56 | `origin/main` em `76d5294de19dafac3daa4a26b0a9ff00af85f228`; stack cumulativa M3/M4 aguardando merge sequencial |
+| Arquivos no diff da slice | 24 no diff isolado inicial; 25 após a adição do workflow de CI |
+| Arquivos no diff cumulativo do PR | 50 no snapshot auditado antes desta revisão; 51 após a adição do workflow de CI |
 | Sistema | `Linux 7.0.0-30-generic` |
 | Rust / Cargo | `rustc 1.88.0 (6b00bc388 2025-06-23)` / `cargo 1.88.0 (873a06493 2025-05-10)` |
-| Suíte final | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 134 testes |
-| Repetições herméticas após correções da revisão | Mesmo comando, 10/10 rodadas exit 0; cada rodada executou 134 testes. Tabela abaixo. |
+| Suíte final após a correção de PID | `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline`: exit 0; 135 testes |
+| Workflow de CI | `.github/workflows/ci.yml`: push e pull request; três jobs Linux; sem SDK Android, emulador ou ADB daemon |
+| Testes de PID/reaping | RED no registro reaproveitado antes da correção; GREEN com `pidfd` + marcador de ambiente exato; filho owned encerrado e aguardado |
+| Repetições herméticas antes desta revisão | Mesmo comando, 10/10 rodadas exit 0; cada rodada executou 134 testes. Tabela abaixo. |
 | `cargo fmt --all -- --check` | exit 0 |
 | `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
 | `git diff --check origin/main...HEAD` | exit 0; nenhum erro de whitespace |
 
-Detalhe das dez repetições pós-correção:
+Detalhe das dez repetições executadas antes desta revisão:
 
 | Rodada | Exit code | Testes |
 |---:|---:|---:|
@@ -118,6 +151,11 @@ Detalhe das dez repetições pós-correção:
 | 8 | 0 | 134 |
 | 9 | 0 | 134 |
 | 10 | 0 | 134 |
+
+As dez repetições acima foram executadas antes desta revisão de segurança, com
+134 testes. Esta revisão adiciona um teste de regressão, elevando a suíte atual
+para 135; a execução única final de 135 testes e todos os gates está registrada
+após os reparos abaixo.
 
 Na primeira série exploratória, antes do isolamento dos fixtures de sessão e
 CLI, a rodada 5/10 falhou com `ETXTBSY` em `rapid_start_stop_cycles_reap_every_owned_child` (91 testes haviam terminado antes da falha). As operações de escrita e execução dos fakes foram serializadas dentro desses test binaries. A revisão independente também detectou e motivou os testes de descendentes, timeout/output cap do `doctor` e cleanup de fixture descritos acima. Depois das correções, uma suíte workspace final e as dez repetições de 134 testes passaram. As falhas iniciais não foram omitidas desta evidência.

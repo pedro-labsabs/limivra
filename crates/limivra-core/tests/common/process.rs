@@ -2,7 +2,7 @@
 
 use std::{
     fs, io,
-    os::unix::fs::PermissionsExt,
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -12,6 +12,46 @@ use std::{
 };
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+const FIXTURE_ENV_MARKER: &[u8] = b"LIMIVRA_FIXTURE_ROOT=";
+
+fn signal_fixture_process(pid: u32, root: &Path) {
+    // Pin the process identity before inspecting its environment so a PID that
+    // exits during teardown cannot be reused as the target of the signal.
+    let pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if pidfd < 0 {
+        return;
+    }
+    let pidfd = pidfd as libc::c_int;
+
+    let is_fixture_process =
+        fs::read(format!("/proc/{pid}/environ"))
+            .ok()
+            .is_some_and(|environment| {
+                environment.split(|byte| *byte == 0).any(|entry| {
+                    entry
+                        .strip_prefix(FIXTURE_ENV_MARKER)
+                        .is_some_and(|value| value == root.as_os_str().as_bytes())
+                })
+            });
+
+    if is_fixture_process {
+        // SAFETY: pidfd refers to the identity opened above, and the exact
+        // fixture-root environment marker verified ownership before signaling.
+        unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                pidfd,
+                libc::SIGKILL,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            );
+        }
+    }
+    // SAFETY: this closes the pidfd returned by pidfd_open above.
+    unsafe {
+        libc::close(pidfd);
+    }
+}
 
 pub struct Fixture {
     root: PathBuf,
@@ -113,6 +153,11 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
+        let owned_pids: std::collections::HashSet<u32> = self
+            .owned_children
+            .get_mut()
+            .map(|children| children.iter().map(std::process::Child::id).collect())
+            .unwrap_or_default();
         if let (Ok(pids), Ok(reaped_pids)) =
             (self.active_pids.get_mut(), self.reaped_pids.get_mut())
         {
@@ -124,15 +169,14 @@ impl Drop for Fixture {
                 }
             }
             for &pid in pids.iter() {
-                // SAFETY: fixtures register only PIDs read from their own private markers.
-                unsafe {
-                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                if !owned_pids.contains(&pid) {
+                    signal_fixture_process(pid, &self.root);
                 }
             }
         }
         if let Ok(children) = self.owned_children.get_mut() {
             for child in children {
-                if matches!(child.try_wait(), Ok(None)) {
+                if !matches!(child.try_wait(), Ok(Some(_))) {
                     let _ = child.kill();
                 }
                 let _ = child.wait();
