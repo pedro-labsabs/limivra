@@ -27,6 +27,14 @@ Ambiente observado em 2026-10-21 no worktree `/tmp/limivra-32`:
 - `CARGO_NET_OFFLINE=true cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: exit 0, sem warnings.
 - `git diff --check origin/main...HEAD`: exit 0; sem erros de whitespace no diff cumulativo após o commit da slice.
 
+## Reparo da corrida no teardown por timeout
+
+A revisão de QA encontrou uma corrida em `timeout_kills_and_reaps_child`: o teste chamava `run_bounded` sincronamente com timeout de 100 ms e só depois aguardava o marcador `pid`. Sob carga, o timeout podia encerrar o filho antes que o shell publicasse o PID, fazendo `wait_for_pid()` expirar sem distinguir inicialização lenta de falha no teardown.
+
+O teste agora segue o padrão já usado em `timeout_kills_and_reaps_descendant_holding_pipe`: executa `run_bounded` em uma tarefa Tokio com timeout de 500 ms, aguarda o marcador do PID enquanto a tarefa roda, verifica `ProcessError::Timeout` e confirma que o PID foi reaped. Assim, a asserção de timeout só ocorre depois de comprovado que o processo iniciou e publicou o marcador.
+
+Após o ajuste, `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` foi executado em cinco rodadas consecutivas: 5/5 saíram com exit 0, cada uma com 148 testes aprovados e zero falhas. Isso registra estabilidade observada nessas rodadas locais; não substitui a execução do CI da PR.
+
 Smokes executados localmente contra o binário real da CLI, com ambientes de processo controlados:
 
 | Entrada | Saída | Resultado |

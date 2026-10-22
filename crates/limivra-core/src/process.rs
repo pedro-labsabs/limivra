@@ -402,15 +402,14 @@ mod tests {
     #[tokio::test]
     async fn timeout_kills_and_reaps_child() {
         let fixture = Fixture::new("exec /bin/sleep 30");
-        let result = run_bounded(
-            &fixture.executable,
-            &fixture.args,
-            Duration::from_millis(100),
-            1024,
-        )
-        .await;
-        assert_eq!(result.unwrap_err(), ProcessError::Timeout);
-        fixture.assert_reaped(fixture.wait_for_pid().await).await;
+        let executable = fixture.executable.clone();
+        let args = fixture.args.clone();
+        let task = tokio::spawn(async move {
+            run_bounded(&executable, &args, Duration::from_millis(500), 1024).await
+        });
+        let pid = fixture.wait_for_pid().await;
+        assert_eq!(task.await.unwrap().unwrap_err(), ProcessError::Timeout);
+        fixture.assert_reaped(pid).await;
     }
 
     #[tokio::test]
