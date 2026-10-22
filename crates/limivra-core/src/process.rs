@@ -167,6 +167,54 @@ mod tests {
     static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
     const FIXTURE_ENV_MARKER: &[u8] = b"LIMIVRA_PROCESS_FIXTURE_ROOT=";
 
+    fn wait_for_fixture_marker(
+        root: &Path,
+        mut read_environment: impl FnMut() -> Option<Vec<u8>>,
+        mut wait: impl FnMut(),
+    ) -> bool {
+        for attempt in 0..10 {
+            let belongs_to_fixture = read_environment().is_some_and(|environment| {
+                environment.split(|byte| *byte == 0).any(|entry| {
+                    entry
+                        .strip_prefix(FIXTURE_ENV_MARKER)
+                        .is_some_and(|value| value == root.as_os_str().as_bytes())
+                })
+            });
+            if belongs_to_fixture {
+                return true;
+            }
+            if attempt < 9 {
+                wait();
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn fixture_marker_check_retries_after_transient_missing_environment() {
+        let root = Path::new("/tmp/limivra-fixture-marker-retry");
+        let marker = [FIXTURE_ENV_MARKER, root.as_os_str().as_bytes()].concat();
+        let mut reads = 0;
+        let mut waits = 0;
+
+        let found = wait_for_fixture_marker(
+            root,
+            || {
+                reads += 1;
+                if reads == 1 {
+                    None
+                } else {
+                    Some(marker.clone())
+                }
+            },
+            || waits += 1,
+        );
+
+        assert!(found, "a transiently unavailable environ should be retried");
+        assert_eq!(reads, 2);
+        assert_eq!(waits, 1);
+    }
+
     fn signal_fixture_process(pid: libc::pid_t, root: &Path) {
         if pid <= 0 {
             return;
@@ -180,16 +228,11 @@ mod tests {
         }
         let pidfd = pidfd as libc::c_int;
 
-        let belongs_to_fixture =
-            fs::read(format!("/proc/{pid}/environ"))
-                .ok()
-                .is_some_and(|environment| {
-                    environment.split(|byte| *byte == 0).any(|entry| {
-                        entry
-                            .strip_prefix(FIXTURE_ENV_MARKER)
-                            .is_some_and(|value| value == root.as_os_str().as_bytes())
-                    })
-                });
+        let belongs_to_fixture = wait_for_fixture_marker(
+            root,
+            || fs::read(format!("/proc/{pid}/environ")).ok(),
+            || std::thread::sleep(Duration::from_millis(5)),
+        );
 
         if belongs_to_fixture {
             // SAFETY: pidfd pins the process identity, and its environment
@@ -299,6 +342,7 @@ mod tests {
         let fixture = Fixture::new("exec /bin/sleep 30");
         let mut child = std::process::Command::new(&fixture.executable)
             .args(&fixture.args)
+            .env("LIMIVRA_PROCESS_FIXTURE_ROOT", &fixture.root)
             .spawn()
             .expect("start fixture child");
         fixture.wait_for_pid().await;

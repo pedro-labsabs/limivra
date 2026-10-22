@@ -1,8 +1,15 @@
 # Issue #31 — Threat model, sanitização de logs e política de segurança
 
 **Branch:** `agent/31-threat-model-security`
-**Base:** `agent/30-contract-tests-fakes` em `6fd1fbdeb3fb4cdb14572f8d51fc9295c854e56d`.
+**Base isolada da Issue #31:** `agent/30-contract-tests-fakes` em `6fd1fbdeb3fb4cdb14572f8d51fc9295c854e56d`.
+**Base cumulativa da PR #57:** `origin/main` em `76d5294de19dafac3daa4a26b0a9ff00af85f228`.
 **Escopo:** threat model, política de disclosure, testes de contrato de segurança e hardening mínimo das superfícies cobertas. Nenhum teste físico foi necessário ou executado.
+
+## Escopos do diff
+
+A slice original da Issue #31 continha 10 arquivos quando comparada isoladamente com `agent/30-contract-tests-fakes` (`6fd1fbdeb3fb4cdb14572f8d51fc9295c854e56d`). A revisão de QA adiciona `crates/limivra-core/src/process.rs` à slice; o diff isolado atualizado contém 11 arquivos, incluindo esta evidência.
+
+A PR #57 usa `origin/main` (`76d5294de19dafac3daa4a26b0a9ff00af85f228`) como base e apresenta o diff cumulativo de 55 arquivos dos branches M3/M4 ainda aguardando integração sequencial. Esse escopo é distinto do diff isolado da Issue #31.
 
 ## Evidência de regressão
 
@@ -25,6 +32,12 @@ Após as correções, os quatro testes da integração `security_contracts` pass
 
 O monitor de foco mantém controle IDs somente enquanto pressionados; isso não equivale a texto digitado. Releases são intenções do core; a futura camada de UI/adapter continua responsável por entregar os eventos ou destruir o dispositivo de input próprio em perda do transporte.
 
+## Correção da corrida no teardown da fixture
+
+O teardown mantém o `pidfd` aberto e agora repete a leitura de `/proc/<pid>/environ` por até 10 tentativas, aguardando 5 ms entre leituras sem correspondência. O `SIGKILL` via `pidfd_send_signal` só é enviado depois que o ambiente confirma o marcador com o caminho exato da fixture. O teste `fixture_drop_kills_its_marked_child_and_child_handle_reaps_it` também passa `LIMIVRA_PROCESS_FIXTURE_ROOT` explicitamente no ambiente inicial do `Command`, para que o marcador esteja presente desde o `execve` inicial.
+
+O teste unitário `fixture_marker_check_retries_after_transient_missing_environment` simula uma primeira leitura indisponível seguida pelo marcador correto. Ele falhou com a implementação de uma só tentativa e passou após o retry. Os 100 ciclos do teste de teardown original executados antes da correção passaram; essa execução não reproduziu a janela rara identificada pela auditoria e não é usada como prova de estabilidade da correção.
+
 ## Documentos alterados
 
 - `docs/security/threat-model.md`: objetivos, limites, fronteiras de confiança, ativos, ameaças, controles e riscos residuais.
@@ -38,12 +51,12 @@ Executados no worktree `/tmp/limivra-31` em 2026-10-21 com `rustc 1.88.0 (6b00bc
 
 | Comando | Resultado |
 |---|---|
-| `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` | exit 0; 142 testes passaram, 0 falharam; doctests: 0 |
-| `cargo fmt --all -- --check` | exit 0 |
-| `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0; zero warnings |
-| `git diff --check origin/main...HEAD` | exit 0; sem erros de whitespace no diff cumulativo, executado após `184753d` |
+| `CARGO_NET_OFFLINE=true cargo test --workspace --locked --offline` | Validação original: exit 0; 142 testes passaram. Após a correção: 10/10 execuções completas passaram, cada uma com 143 testes, 0 falhas e 0 doctests. |
+| `cargo fmt --all -- --check` | exit 0 após a correção |
+| `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` | exit 0 após a correção; zero warnings |
+| `git diff --check origin/main...HEAD` | exit 0; sem erros de whitespace no diff cumulativo, repetido após a atualização final desta evidência. |
 
-Durante uma execução completa, o stderr imprimiu uma vez `sleep: invalid option -- '-s'`. A origem provável foi o teste preexistente `provider::tests::test_provider_fallback_when_host_unsupported`, que usa `sleep` como mock de scrcpy enquanto o provider fornece argumentos reais de scrcpy. A execução isolada desse teste passou sem reproduzir a linha; o exit code da suíte completa permaneceu 0. Nenhuma alteração foi feita nesse teste fora do escopo da Issue #31.
+Em 5 das 10 execuções completas, o stderr imprimiu `sleep: invalid option -- '-s'`, sem falha de teste ou alteração do exit code. A origem provável é o teste preexistente `provider::tests::test_provider_fallback_when_host_unsupported`, que usa `sleep` como mock de scrcpy enquanto o provider fornece argumentos reais de scrcpy. Isso é ruído do mock, não falha intermitente do teardown; nenhuma alteração foi feita nesse teste fora do escopo da revisão.
 
 ## Limitações, risco e reversão
 
