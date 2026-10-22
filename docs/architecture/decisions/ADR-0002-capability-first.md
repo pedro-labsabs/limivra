@@ -1,12 +1,12 @@
 # ADR-0002 — detecção de capacidades, não de fabricante
 
-**Status:** PROPOSED (2026-10-18)
+**Status:** ACCEPTED (2026-10-22), limitado à separação dos modos, aos estados de capacidade, ao padrão UNKNOWN, à evidência observável e ao fallback consentido.
 
 ## Contexto
 Um display virtual Android pode abrir sem permitir launcher completo, decorações do sistema ou freeform. Fabricante/API level não determina suporte.
 
-## Decisão proposta
-`SUPPORTED | UNSUPPORTED | UNKNOWN | BLOCKED` com origem da prova, versão, razões. Separar `MIRROR`, `VIRTUAL_DISPLAY` e `DESKTOP_WINDOWING`. UNKNOWN por padrão. Detectar por comportamento observado no dispositivo e não só por `getprop`.
+## Decisão aceita no escopo limitado
+Representar capacidades com SUPPORTED, UNSUPPORTED, UNKNOWN e BLOCKED, registrando origem da prova, versão e razão. Separar MIRROR, VIRTUAL_DISPLAY e DESKTOP_WINDOWING. UNKNOWN é o padrão; suporte de ROM só pode ser classificado com evidência observável no dispositivo e ambiente identificados, não por fabricante, nível de API ou presença de flag no host. Oferecer fallback de VIRTUAL_DISPLAY para MIRROR com explicação e iniciar mirror somente após aceite explícito do usuário. Esta ratificação não define probes, critérios concretos de detector ou qualquer capacidade do Redmi Note 13 4G/HyperOS.
 
 ## Consequências
-Fallback explícito evita UX enganosa; testes de suporte têm limites, evitam manipulação persistente e preservam privacidade.
+Fallback nunca é silencioso: a oferta de MIRROR exige explicação e aceite afirmativo antes de iniciar. Ausência de prova mantém UNKNOWN; BLOCKED não equivale a UNSUPPORTED.

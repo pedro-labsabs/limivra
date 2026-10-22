@@ -310,3 +310,46 @@ O mantenedor é convidado a avaliar e registrar sua decisão sobre os seguintes 
 - **[Risco P0 - Hardware]:** O HyperOS da Xiaomi pode restringir displays secundários ou exigir permissões adicionais para controle de entrada. *(Mitigação: Depende exclusivamente dos dados do SPIKE-001)*.
 - **[Risco P1 - Dependências]:** A ausência de `scrcpy` e `adb` instalados no host de desenvolvimento demandará documentação de pré-requisitos antes de ensaios práticos locais.
 - **[Risco P1 - Licenciamento]:** A indefinição da licença do projeto (Issue #7) continua como bloqueio formal para distribuição e empacotamento.
+
+## 13. Registro da decisão humana parcial — 2026-10-22
+
+**Fonte:** [manifestação explícita do responsável pelo projeto na Issue #8](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6342794434).
+
+**Natureza:** ratificação documental limitada da direção arquitetural. Este adendo atualiza os estados registrados nas seções históricas de 18/10/2026, sem apagá-las. Não fecha a Issue #8, não marca M0 concluído e não autoriza implementação.
+
+### Decisões aceitas no escopo aprovado
+
+- Session Core e CLI em Rust.
+- Interface gráfica Linux futura em Qt 6/QML.
+- ADB e scrcpy como ferramentas externas supervisionadas em subprocessos; encerramento seguro limitado a processos pertencentes ao Limivra.
+- Fluxo sem root, desbloqueio de bootloader, bypass ou modificação persistente de controles de segurança.
+- Modos MIRROR, VIRTUAL_DISPLAY e DESKTOP_WINDOWING distintos.
+- Estados de capacidade SUPPORTED, UNSUPPORTED, UNKNOWN (padrão) e BLOCKED.
+- Suporte de ROM classificado somente com evidência observável, específica ao dispositivo e ao ambiente.
+- Fallback de VIRTUAL_DISPLAY para MIRROR somente após oferta explicada e aceite explícito do usuário.
+
+As ADR-0001, ADR-0002, ADR-0003 e ADR-0005 registram ACCEPTED somente dentro desses limites. A ADR-0004 (MIT) permanece intacta; suas obrigações para dependências continuam separadas.
+
+### Decisões e ações que permanecem abertas ou não autorizadas
+
+- Nenhum contrato concreto de integração/IPC foi aprovado: formato, transporte, serialização, autenticação, ABI, versionamento e ciclo de vida seguem pendentes.
+- Embedding de vídeo em Qt requer investigação e decisão separadas.
+- Código de produto, scaffold Rust e testes com telefone físico não foram autorizados.
+- O PRD e a especificação completa não foram ratificados automaticamente.
+- Nenhuma capacidade do Redmi Note 13 4G/HyperOS foi afirmada ou aprovada.
+- Release, distribuição e aproveitamento de PRs de produto já abertas não foram autorizados.
+- A direção aceita não aprova automaticamente o mecanismo de comunicação entre UI e núcleo nem a integração de vídeo.
+
+### Gates que mantêm M1 bloqueado
+
+Estado consultado em 22/10/2026:
+
+- **#8 — aberta:** a ratificação é parcial; revisão integral do design e aprovação do plano de implementação continuam pendentes.
+- **#11 — aberta / status:needs-evidence:** a direção da stack foi escolhida, mas isso não conclui a Issue de viabilidade nem prova build, UI, integração ou empacotamento.
+- **#9 — aberta / status:blocked:** SPIKE-001 depende de telefone disponível e consentimento físico específico; não houve teste nesta slice.
+- **#10 — aberta / status:needs-evidence:** a matriz de capacidades depende de evidência observável, incluindo os resultados de #9.
+- **#15 — aberta / status:needs-evidence:** não iniciar workspace, scaffold ou build até cumprir as dependências #8 e #11 e existir plano aprovado.
+- **M1 em hardware:** continua sem prova de USB, mirror, input, teardown e experiência de sessão; a aprovação documental não substitui E2E físico.
+- **Licença e distribuição:** #7 está encerrada para a licença MIT do código original; revisão de obrigações das dependências e autorização de distribuição permanecem gates próprios de empacotamento/release.
+
+Esta decisão não altera o grafo de issues, não encerra issue alguma e não torna uma PR de produto existente em autorização de trabalho.

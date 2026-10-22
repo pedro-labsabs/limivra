@@ -1,12 +1,12 @@
 # ADR-0001 — scrcpy externo como backend inicial
 
-**Status:** PROPOSED (2026-10-18)
+**Status:** ACCEPTED (2026-10-22), limitado ao uso de scrcpy como ferramenta externa no backend inicial e à supervisão de subprocessos próprios.
 
 ## Contexto
 scrcpy oferece comunicação e interação maduras. Desenvolver streaming próprio antes de provar displays virtuais aumentaria custo.
 
-## Decisão proposta
-Invocar scrcpy como subprocesso controlado na primeira fase; testar `--version` e opções reais, tratar saída/falhas e encerrar apenas subprocessos próprios. ADB usado para descoberta e autorização.
+## Decisão aceita no escopo limitado
+Invocar scrcpy como ferramenta externa supervisionada em subprocesso no backend inicial; verificar versão e opções reais, tratar saída e falhas e encerrar exclusivamente o processo filho iniciado pelo Limivra. ADB também será ferramenta externa em subprocesso supervisionado para funções futuras autorizadas. Esta aceitação não fixa a comunicação da UI com o núcleo, não aprova embedding de vídeo e não autoriza implementação.
 
 ## Consequências
 + Implementação inicial simples, reproduzível e reversível.
