@@ -391,3 +391,34 @@ Consulta ao GitHub em 2026-10-23: [#8](https://github.com/pedro-labsabs/limivra/
 O parágrafo de decisão da ADR-0004 ainda afirma que as ADRs 0001–0003 permanecem `PROPOSED`, em divergência com os status limitados `ACCEPTED` registrados nessas ADRs e com a ratificação da PR #62. Esta entrega registra a divergência e usa os limites explícitos das ADRs aceitas e da PR #62 na matriz acima; a ADR-0004 permanece intocada conforme a allowlist. Uma correção literal dessa linha exige uma alteração documental separada.
 
 Este adendo não aprova o PRD ou a especificação em bloco, não escolhe topologia, IPC ou embedding, não altera status de issues, não autoriza implementação e não declara evidência de hardware.
+
+## 15. Confirmação humana do PRD v0.1, da especificação e do plano mínimo da #15 — 2026-10-23
+
+**Fonte e rastreabilidade:** [confirmação do mantenedor na Issue #8](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6367240150).
+
+**Decisão registrada:** em resposta ao pedido de aprovação humana do PRD, da especificação e do plano mínimo da #15, o mantenedor confirmou que já os havia aprovado. Esta seção registra a confirmação em 23/10/2026 para as versões dos documentos na base `main@8bb7c71554a9b6ffae527e85b296180e6286b758`, sem retroagir a data ou ampliar o alcance da decisão:
+
+- [PRD v0.1](../product/PRD.md);
+- [especificação de design](../superpowers/specs/2026-10-18-limivra-design.md);
+- [plano mínimo da Issue #15](../superpowers/plans/2026-10-23-limivra-m1-foundation-proposal.md), aprovado como plano mínimo.
+
+A aprovação documental está subordinada à segurança e aos escopos das ADRs já aceitas. A ratificação limitada registrada em 22/10/2026 continua sendo o limite das decisões arquiteturais aceitas; a aprovação destes três documentos não amplia essas decisões, não constitui evidência de hardware, não autoriza implementação e não fecha a #8 ou a #15. A licença MIT refere-se ao código original conforme ADR-0004; obrigações de licenças de dependências e distribuição permanecem próprias.
+
+### Decisões NÃO APROVADAS / pendentes
+
+- Topologia concreta entre UI e Core.
+- Contrato de integração IPC/FFI.
+- Formato e esquema das mensagens.
+- Embedding de vídeo em Qt.
+- Comandos concretos de ADB.
+- Acesso físico ao telefone e qualquer observação no aparelho.
+
+### Gates de início de M1 para a #15
+
+A aprovação do plano mínimo não libera o início da #15. Permanecem necessários:
+
+- **#9 — OPEN / BLOCKED:** SPIKE-001 requer consentimento humano específico e observação real; sem ambos, permanece bloqueada.
+- **#10 — OPEN / NEEDS_EVIDENCE:** a matriz de capacidades depende da evidência de #9 e precisa ser concluída com observações verificáveis.
+- **#11 — OPEN / NEEDS_EVIDENCE:** a avaliação de viabilidade precisa ser concluída com evidência conclusiva; a aceitação limitada da direção arquitetural não equivale à conclusão da issue.
+
+Os registros das seções 13 e 14 preservam o histórico das decisões e dos estados anteriores. A situação de PROPOSED para o PRD, a especificação e o plano descrita na seção 14 foi atualizada por esta confirmação; a divergência textual de ADR-0004 apontada ali foi corrigida nesta entrega. As issues #8 e #15 permanecem abertas, e nenhum gate de M1 foi dispensado.
