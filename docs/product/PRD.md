@@ -1,6 +1,8 @@
-# Limivra — PRD (proposta v0.1)
+# Limivra — PRD v0.1
 
-**Status:** PROPOSTA, requer revisão humana. **Data:** 2026-10-18.
+**Status atual:** APROVADO em 23/10/2026, conforme confirmação humana do mantenedor na [Issue #8](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6367240150).
+**Histórico:** publicado como proposta para revisão humana em 18/10/2026.
+**Escopo:** aprovação documental desta versão, subordinada à segurança e aos escopos das ADRs já aceitas; não autoriza implementação nem dispensa gates pendentes.
 
 ## Visão
 Permitir usar aplicativos executados no próprio celular Android, controlados dentro do desktop Linux por USB ou Wi-Fi, sem depender de Samsung ou root. O Limivra não executa APKs no PC nem garante recursos que a ROM não oferece.
@@ -39,4 +41,4 @@ M0 prova e segurança; M1 conexão USB e sessão mirror; M2 tela virtual e fallb
 Execução de Android no Linux, suporte Windows/macOS, DeX copiado, root e bypass de DRM, modo celular ligado diretamente a monitor, controle não autorizado pela Internet, contornar bloqueios de aplicativos protegidos.
 
 ## Questões abertas
-HyperOS pode restringir displays; integração Qt/Rust requer validação; licenciamento do Limivra ainda não escolhido; versão exata scrcpy e distribuição dependem de descoberta e revisão de licenças. Não criar release antes das decisões.
+HyperOS pode restringir displays; integração Qt/Rust requer validação; a licença MIT do código original foi aceita pela ADR-0004, enquanto revisão das licenças e obrigações de distribuição das dependências permanece pendente; versão exata scrcpy e distribuição dependem de descoberta e revisão de licenças. Não criar release antes das decisões.

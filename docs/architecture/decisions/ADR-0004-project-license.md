@@ -30,7 +30,7 @@ Adotar a **Licença MIT** (SPDX: `MIT`) para todo o código original do projeto 
 - **Titularidade inicial do copyright:** `Copyright (c) 2026 renyennos`.
 - **DCO / CLA:** Política pendente de deliberação humana; esta ADR não cria exigência nova nem dispensa formal.
 
-Esta aceitação refere-se **estritamente à decisão de licenciamento do projeto**. As ADRs de arquitetura existentes ([ADR-0001](ADR-0001-scrcpy-external.md), [ADR-0002](ADR-0002-capability-first.md), [ADR-0003](ADR-0003-no-root.md)) permanecem como `PROPOSED` sujeitas a testes empíricos de implementação e comprovação técnica.
+Esta aceitação refere-se **estritamente à decisão de licenciamento do projeto**. **Histórico em 18/10/2026:** as ADRs de arquitetura [0001](ADR-0001-scrcpy-external.md), [0002](ADR-0002-capability-first.md) e [0003](ADR-0003-no-root.md) ainda estavam em estado `PROPOSED`. Em 22/10/2026, a [PR #62](https://github.com/pedro-labsabs/limivra/pull/62) registrou a ratificação humana limitada dessas decisões; seus status e escopos atuais estão descritos nas próprias ADRs. Essa ratificação posterior não amplia nem altera a decisão de licença desta ADR.
 
 ## Consequências
 

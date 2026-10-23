@@ -1,8 +1,8 @@
 # Limivra M1 Foundation / Skeleton — Implementation Plan
 
-> **For future agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans only after written human approval of this plan. This document is **PROPOSED, NOT APPROVED** and grants no implementation authorization.
+> **For future agentic workers:** this minimum plan was approved by the maintainer on 23/10/2026 ([Issue #8 confirmation](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6367240150)). That approval grants no implementation authorization by itself; satisfy all start gates below before executing it.
 
-**Status:** PROPOSED, NOT APPROVED — 2026-10-23.
+**Status:** ACCEPTED / APROVADO COMO PLANO MÍNIMO — 23/10/2026, pelo mantenedor, conforme [comentário na Issue #8](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6367240150).
 
 **Goal:** propor o menor alicerce reproduzível para a Issue [#15](https://github.com/pedro-labsabs/limivra/issues/15): workspace Linux com esqueleto Session Core/CLI em Rust e prova determinística da supervisão de subprocessos próprios, sem sessão Android funcional.
 
@@ -24,7 +24,7 @@
 
 ## Arquivos previstos para uma implementação futura
 
-Os caminhos abaixo são a proposta mínima para revisão em #8; nenhum deles será criado nesta entrega documental.
+Os caminhos abaixo compõem o plano mínimo aprovado para a futura Issue #15; nenhum deles será criado nesta entrega documental.
 
 | Caminho futuro | Responsabilidade proposta |
 |---|---|
@@ -52,13 +52,13 @@ Os caminhos abaixo são a proposta mínima para revisão em #8; nenhum deles ser
 
 ---
 
-## Tarefas propostas — não executar sem aprovação
+## Tarefas do plano mínimo aprovado — execução condicionada aos gates
 
 ### Task 1: Definir gates e criar o workspace compilável
 
 **Arquivos:** `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `crates/limivra-core/Cargo.toml`, `crates/limivra-core/src/lib.rs`, `crates/limivra-cli/Cargo.toml`, `crates/limivra-cli/src/main.rs`.
 
-- [ ] Antes de alterar arquivos, confirmar aprovação escrita da revisão integral de PRD/especificação e deste plano em #8, evidência e encerramento de #11, e liberação dos gates M0 aplicáveis a #9/#10. Se qualquer gate estiver aberto ou sem evidência, STOP.
+- [ ] Antes de alterar arquivos, confirmar o registro de aprovação humana do PRD/especificação e deste plano na #8. A aprovação documental não libera M1: #9 requer consentimento específico e observação humana; #10 depende da evidência de #9; e #11 precisa concluir a avaliação de viabilidade. Se qualquer gate estiver aberto ou sem evidência, STOP.
 - [ ] Criar o workspace e os dois pacotes vazios, sem acoplar CLI e Core nem definir a integração futura com a UI.
 - [ ] Registrar a versão Rust após evidência de #11 e aprovação humana; produzir o lockfile e não introduzir dependência não aprovada.
 - [ ] Rodar `cargo build --workspace --locked` e `cargo test --workspace --locked`; exigir ambos com exit code 0 em Linux limpo.
@@ -101,9 +101,11 @@ Os caminhos abaixo são a proposta mínima para revisão em #8; nenhum deles ser
 
 **Gates antes de iniciar:**
 
-- Aprovação humana explícita do PRD/especificação em #8 e deste plano como plano de implementação.
-- #11 concluída com evidência de viabilidade e versão de toolchain/stack que possa ser fixada.
-- Gates de saída M0 do roadmap satisfeitos; #9 requer consentimento específico e observação humana, e #10 exige matriz sustentada por evidência.
+- Aprovação humana do PRD/especificação e deste plano mínimo registrada na #8, subordinada à segurança e aos escopos das ADRs aceitas. Essa aprovação documental não dispensa os gates seguintes.
+- #9 concluída com consentimento específico e observação humana; seu estado permanece BLOCKED enquanto isso não ocorrer.
+- #10 concluída com matriz sustentada por evidência e dependente da evidência de #9.
+- #11 concluída com evidência conclusiva de viabilidade.
+- Gates de saída M0 do roadmap satisfeitos antes de iniciar M1.
 - Nenhuma mudança de `origin/main` que invalide a baseline exige continuar automaticamente: parar e revalidar escopo/base.
 
 **Aceite técnico futuro da #15:**
@@ -116,11 +118,11 @@ Os caminhos abaixo são a proposta mínima para revisão em #8; nenhum deles ser
 
 ## Dependências, riscos e condições de STOP
 
-- **Dependências:** #15 depende formalmente de #8 e #11; a saída M0 do roadmap também requer evidência de hardware e matriz das issues #9/#10. No estado consultado em 2026-10-23, #8/#10/#11/#15 estão abertas com `status:needs-evidence` e #9 está aberta com `status:blocked`.
+- **Dependências e estado consultado em 2026-10-23:** #15 depende formalmente de #8 e #11; o início de M1 também requer os gates #9 e #10. #9 está aberta com `status:blocked`; #10 está aberta e depende da evidência de #9; #11 está aberta e requer conclusão de viabilidade; #8 e #15 permanecem abertas. A aprovação do plano não altera esses estados.
 - **Risco de contrato:** assinatura e semântica interna do supervisor, valores de timeout e política de encerramento não foram aceitos; devem ser apresentados antes da implementação se alterarem limites de segurança.
 - **Risco de escopo:** ligar UI e Core pode exigir topologia, IPC, FFI ou embedding de vídeo; qualquer necessidade disso suspende esta slice até decisão humana separada.
 - **STOP:** falta de aprovação escrita, dependência #11 sem evidência, gate M0 ainda pendente, mudança de base, necessidade de root, acesso a dispositivo, encerramento por nome de processo, ou necessidade de escolher um contrato de IPC/FFI/vídeo.
 
 **Rollback futuro:** reverter somente os arquivos do slice #15 em sua branch dedicada, sem reset ou limpeza de checkout compartilhado; preservar logs sanitizados e evidências de CI necessárias à revisão.
 
-**Estado desta proposta:** documental; não executada, não aprovada e sem alteração de status de issues.
+**Estado:** plano mínimo aprovado em 23/10/2026, documental e não executado. #9, #10 e #11 continuam sendo gates para o início de M1; nenhuma issue teve seu status alterado por esta aprovação.
