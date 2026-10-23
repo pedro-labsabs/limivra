@@ -354,3 +354,40 @@ Estado consultado em 22/10/2026:
 - **Licença e distribuição:** #7 está encerrada para a licença MIT do código original; revisão de obrigações das dependências e autorização de distribuição permanecem gates próprios de empacotamento/release.
 
 Esta decisão não altera o grafo de issues, não encerra issue alguma e não torna uma PR de produto existente em autorização de trabalho.
+
+## 14. Reconciliação da direção aceita e proposta do primeiro slice M1 — 2026-10-23
+
+**Fontes e rastreabilidade:** [despacho do mantenedor na Issue #8](https://github.com/pedro-labsabs/limivra/issues/8#issuecomment-6366079529), [Issue #8](https://github.com/pedro-labsabs/limivra/issues/8), [PR #61](https://github.com/pedro-labsabs/limivra/pull/61), [PR #62](https://github.com/pedro-labsabs/limivra/pull/62), [PRD](../product/PRD.md), [especificação de design](../superpowers/specs/2026-10-18-limivra-design.md), [roadmap](roadmap.md), [estratégia de testes](../testing/strategy.md) e [ADR-0004 — licença MIT](../architecture/decisions/ADR-0004-project-license.md).
+
+Este adendo complementa, sem apagar, o registro de 18/10 e a decisão parcial de 22/10. As afirmações das seções históricas 1, 2.2, 8 e 12 de que nenhuma ADR foi aceita ou de que a licença ainda não foi decidida descrevem o estado anterior e não são o estado atual: a licença MIT do código original foi aceita na ADR-0004, e a PR #62 registrou aceitação limitada das ADRs [0001](../architecture/decisions/ADR-0001-scrcpy-external.md), [0002](../architecture/decisions/ADR-0002-capability-first.md), [0003](../architecture/decisions/ADR-0003-no-root.md) e [0005](../architecture/decisions/ADR-0005-stack-core-rust.md). Obrigações de terceiros e distribuição continuam próprias. A [PR #61](https://github.com/pedro-labsabs/limivra/pull/61) é uma proposta documental integrada; ela não encerrou a [Issue #11](https://github.com/pedro-labsabs/limivra/issues/11) nem substitui a evidência de viabilidade ainda exigida.
+
+### Matriz explícita de estados
+
+| Estado | Leitura em 2026-10-23 | Evidência e limite |
+|---|---|---|
+| **ACCEPTED — direção** | Session Core e CLI em Rust; futura UI Linux em Qt 6/QML; ADB e scrcpy como ferramentas externas supervisionadas, com timeout, cancelamento e encerramento seguro limitados aos processos filhos iniciados pelo Limivra; caminho base sem root; modos e estados de capacidade separados; fallback apenas após explicação e aceite explícito. A licença MIT do código original também está aceita. | Ratificação arquitetural limitada pela [PR #62](https://github.com/pedro-labsabs/limivra/pull/62), ADRs [0001](../architecture/decisions/ADR-0001-scrcpy-external.md)–[0003](../architecture/decisions/ADR-0003-no-root.md) e [0005](../architecture/decisions/ADR-0005-stack-core-rust.md); licença restrita ao código original na [ADR-0004](../architecture/decisions/ADR-0004-project-license.md). Não aprova contratos concretos, implementação ou distribuição de dependências. |
+| **PROPOSED — PRD, especificação e plano** | O [PRD](../product/PRD.md), a [especificação](../superpowers/specs/2026-10-18-limivra-design.md) e este pacote continuam propostas para revisão humana no seu conjunto. O [plano do primeiro slice M1](../superpowers/plans/2026-10-23-limivra-m1-foundation-proposal.md) é **PROPOSED, NOT APPROVED**. | A aceitação de uma direção arquitetural delimitada não ratifica integralmente requisitos, escolhas detalhadas, nem plano de execução. A [Issue #8](https://github.com/pedro-labsabs/limivra/issues/8) permanece aberta. |
+| **UNKNOWN — ROM** | Capacidades de qualquer ROM/dispositivo continuam desconhecidas até observação identificada e reproduzível. Nenhuma capacidade de `MIRROR`, `VIRTUAL_DISPLAY`, `DESKTOP_WINDOWING` ou input é inferida a partir de fabricante, versão Android ou flag do host. | O estado padrão definido pela ADR-0002 é `UNKNOWN`; ainda não há evidência de hardware que sustente uma classificação de suporte. |
+| **BLOCKED — hardware** | O SPIKE-001 e a observação física continuam bloqueados; esta entrega não acessa nem testa aparelho. A matriz de capacidades também não pode ser concluída sem a evidência de hardware necessária. | [Issue #9](https://github.com/pedro-labsabs/limivra/issues/9) está aberta com `status:blocked`; [Issue #10](https://github.com/pedro-labsabs/limivra/issues/10) está aberta com `status:needs-evidence` e depende da evidência de #9. |
+
+### Decisões humanas ainda pendentes
+
+1. **Topologia concreta de processos:** decidir futuramente se UI Qt e núcleo Rust residirão no mesmo processo, em processos separados ou em outra composição. A separação conceitual aceita não escolhe essa topologia.
+2. **Integração e contrato IPC:** decidir, em proposta própria, se a integração usa IPC, FFI ou outra fronteira; definir transporte, esquema e serialização das mensagens, versionamento, erros, ordenação, limites e ciclo de vida. Nenhum esquema ou mecanismo foi aprovado.
+3. **Vídeo dentro de Qt:** investigar e decidir separadamente se haverá embedding, considerando integração, ciclo de vida, plataformas e licenças. A invocação externa de scrcpy aceita pela ADR-0001 não aprova embedding.
+4. **Ratificação integral e execução:** revisar o PRD e a especificação completos e aprovar formalmente o plano antes de qualquer scaffold ou implementação.
+
+### Estado atual dos gates e dependências
+
+Consulta ao GitHub em 2026-10-23: [#8](https://github.com/pedro-labsabs/limivra/issues/8) está aberta (`status:needs-evidence`); [#9](https://github.com/pedro-labsabs/limivra/issues/9) está aberta (`status:blocked`); [#10](https://github.com/pedro-labsabs/limivra/issues/10), [#11](https://github.com/pedro-labsabs/limivra/issues/11) e [#15](https://github.com/pedro-labsabs/limivra/issues/15) estão abertas (`status:needs-evidence`). As PRs [#61](https://github.com/pedro-labsabs/limivra/pull/61) e [#62](https://github.com/pedro-labsabs/limivra/pull/62) estão merged.
+
+- As dependências registradas para #15 são #8 e #11. A #11 continua aberta apesar da PR #61 e ainda precisa comprovar sua viabilidade.
+- A saída geral de M0 no [roadmap](roadmap.md) exige relatório real de hardware e plano aprovado. #9 e #10 permanecem pendentes, então a proposta deste documento não libera M1.
+- A #8 continua responsável pela decisão humana sobre a revisão integral do PRD/especificação e a aprovação do plano. Uma PR documental aprovada por si só não fecha a issue nem altera esses gates.
+- A aceitação da licença MIT pela ADR-0004 cobre o código original; obrigações de terceiros e autorização de distribuição permanecem fora desta ratificação.
+
+### Divergência textual preservada para correção separada
+
+O parágrafo de decisão da ADR-0004 ainda afirma que as ADRs 0001–0003 permanecem `PROPOSED`, em divergência com os status limitados `ACCEPTED` registrados nessas ADRs e com a ratificação da PR #62. Esta entrega registra a divergência e usa os limites explícitos das ADRs aceitas e da PR #62 na matriz acima; a ADR-0004 permanece intocada conforme a allowlist. Uma correção literal dessa linha exige uma alteração documental separada.
+
+Este adendo não aprova o PRD ou a especificação em bloco, não escolhe topologia, IPC ou embedding, não altera status de issues, não autoriza implementação e não declara evidência de hardware.
