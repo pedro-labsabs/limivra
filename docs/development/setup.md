@@ -1,42 +1,31 @@
-# Guia de Configuração e Ambiente — Limivra
+# Configuração do workspace Limivra
 
-Este documento descreve como configurar o ambiente de desenvolvimento e executar o build do Limivra no Linux.
+## Escopo da Issue #15
 
-## Pré-requisitos do Sistema
+Este slice fornece um workspace Cargo mínimo, uma CLI de ajuda/versão e uma fronteira de supervisão para subprocessos locais iniciados pelo próprio núcleo. Ele não conecta a dispositivos Android nem requer ADB ou scrcpy para compilar e testar.
 
-1. **Rust Toolchain:**
-   - Versão mínima recomendada: `1.80+` (testado e validado com Rust `1.88.0`).
-   - Para instalar ou atualizar: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+A opção `--new-display` do scrcpy surgiu na versão **3.0**. Uma futura utilização desse recurso depende de verificar previamente `scrcpy --help` na versão instalada e confirmar que a opção está listada. Este slice não executa esse comando.
 
-2. **Dependências Externas em Runtime (Subprocessos):**
-   - **ADB (`adb`):** Necessário para detecção, autorização e encaminhamento de portas (`apt install adb`).
-   - **scrcpy (`scrcpy`):** Utilizado como backend de vídeo e injeção de input.
-     - *Requisito para Display Virtual Independente:* `scrcpy >= 2.2`.
+## Ambiente
 
-## Estrutura do Workspace
+É necessário ter Rust e Cargo disponíveis em um host Linux. Os testes da supervisão usam um filho fake local; nenhum aparelho, ADB ou scrcpy é usado. Este slice não exige comandos de instalação de ferramentas externas.
 
-O projeto é organizado como um Cargo Workspace em Rust:
+## Estrutura do workspace
 
-- `crates/limivra-core`: Biblioteca do núcleo de sessão, orquestração de subprocessos e abstração de displays.
-- `crates/limivra-cli`: Interface CLI para controle, diagnóstico (`doctor`) e inicialização de sessões.
+- `crates/limivra-core`: supervisão e teardown do processo filho que iniciou.
+- `crates/limivra-cli`: apenas ajuda e versão.
 
-## Comandos Determinísticos de Build e Teste
+## Comandos determinísticos
 
-Execute estes comandos a partir da raiz do repositório:
+Execute na raiz do repositório:
 
 ```bash
-# Verificar compilação de todos os crates
-cargo check
-
-# Executar a suíte de testes unitários e de integração
-cargo test
-
-# Executar o diagnóstico de ferramentas do ambiente
-cargo run -- doctor
-
-# Iniciar sessão básica em modo espelhamento
-cargo run -- start
-
-# Iniciar sessão com display virtual independente
-cargo run -- start --virtual-display
+rustc --version
+cargo --version
+cargo fmt --all -- --check
+cargo test --workspace --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --locked
+cargo run -p limivra-cli -- --help
+cargo run -p limivra-cli -- --version
 ```

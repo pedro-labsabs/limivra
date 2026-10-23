@@ -1,79 +1,36 @@
-//! Limivra CLI - Interface de linha de comando para controle e diagnóstico do Limivra.
+use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
-use limivra_core::{DisplayMode, SessionState};
+const HELP: &str = "Limivra — base mínima do workspace
 
-#[derive(Parser, Debug)]
-#[command(name = "limivra")]
-#[command(about = "Acesse e controle dispositivos Android a partir do Linux como uma área de trabalho.")]
-#[command(version)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
+Uso: limivra [--help | --version]
 
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Inicia uma sessão de exibição
-    Start {
-        /// Número de série do dispositivo Android (opcional se houver apenas um)
-        #[arg(short, long)]
-        serial: Option<String>,
+Opções:
+  -h, --help       Exibe esta ajuda
+  -V, --version    Exibe a versão
+";
 
-        /// Habilitar modo de tela virtual independente (scrcpy --new-display)
-        #[arg(long, default_value_t = false)]
-        virtual_display: bool,
-    },
-    /// Verifica a disponibilidade das dependências no sistema host (ADB e scrcpy)
-    Doctor,
-}
+fn main() -> ExitCode {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-    let cli = Cli::parse();
+    if args.is_empty() {
+        print!("{HELP}");
+        return ExitCode::SUCCESS;
+    }
 
-    match cli.command {
-        Commands::Start {
-            serial,
-            virtual_display,
-        } => {
-            let mode = if virtual_display {
-                DisplayMode::VirtualDisplay {
-                    width: 1920,
-                    height: 1080,
-                    dpi: 240,
-                }
-            } else {
-                DisplayMode::Mirror
-            };
-            let serial_str = serial.unwrap_or_else(|| "default".to_string());
-            let state = SessionState::Active {
-                serial: serial_str.clone(),
-                mode,
-            };
-            println!("Inicializando sessão Limivra para {}: {:?}", serial_str, state);
-        }
-        Commands::Doctor => {
-            println!("Executando diagnóstico de ambiente Limivra...");
-            check_tool("adb");
-            check_tool("scrcpy");
+    if args.len() == 1 {
+        match args[0].to_str() {
+            Some("--help" | "-h") => {
+                print!("{HELP}");
+                return ExitCode::SUCCESS;
+            }
+            Some("--version" | "-V") => {
+                println!("limivra {}", env!("CARGO_PKG_VERSION"));
+                return ExitCode::SUCCESS;
+            }
+            _ => {}
         }
     }
-}
 
-fn check_tool(tool: &str) {
-    match std::process::Command::new(tool).arg("--version").output() {
-        Ok(output) if output.status.success() => {
-            let first_line = String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string();
-            println!("  [OK] {}: {}", tool, first_line);
-        }
-        _ => {
-            println!("  [FALHA] {}: não encontrado no PATH", tool);
-        }
-    }
+    eprintln!("Comando ou opção não disponível nesta versão. Use --help.");
+    ExitCode::from(2)
 }
